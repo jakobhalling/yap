@@ -1,0 +1,77 @@
+Agent 2 — Audio & Transcription Pipeline — Status Report
+==========================================================
+
+FILES CREATED
+-------------
+1. lib/services/assemblyai/assemblyai_config.dart
+2. lib/services/assemblyai/assemblyai_models.dart
+3. lib/services/assemblyai/assemblyai_service.dart
+4. lib/features/recording/recording_state.dart
+5. lib/features/recording/recording_service.dart
+6. lib/features/recording/recording_providers.dart
+7. test/services/assemblyai_service_test.dart
+8. test/features/recording/recording_service_test.dart
+
+IMPLEMENTATION STATUS
+---------------------
+All files are FULLY IMPLEMENTED (no stubs).
+
+- assemblyai_config.dart: WebSocket URL, sample rate, send interval, URL builder.
+- assemblyai_models.dart: AssemblyAIMessage (with fromJson), WordInfo, message type constants.
+- assemblyai_service.dart: Full WebSocket client with base64 audio encoding, JSON message
+  parsing, partial/final segment emission, graceful termination (terminate_session + wait
+  for SessionTerminated), error propagation. Includes assemblyAIServiceProvider (Riverpod).
+- recording_state.dart: RecordingState immutable model with copyWith. RecordingStatus enum.
+- recording_service.dart: Full lifecycle orchestration — startRecording, stopRecording,
+  cancelRecording. Builds display transcript (finals + latest partial). 30-minute auto-stop
+  timer. Elapsed time ticker. Error handling for all failure modes. Custom exceptions
+  (NoApiKeyException, MicrophonePermissionException).
+- recording_providers.dart: recordingServiceProvider and recordingStateProvider (Riverpod).
+- Tests: 18 test cases covering WebSocket protocol, transcript building, lifecycle
+  transitions, error scenarios, and edge cases.
+
+DECISIONS MADE
+--------------
+1. AssemblyAIServiceImpl accepts an optional `channelFactory` parameter for dependency
+   injection in tests, avoiding the need for a full mock WebSocket server.
+
+2. The service uses `web_socket_channel` package's `ready` future to detect connection
+   failures early during startSession().
+
+3. endSession() has a 5-second timeout waiting for SessionTerminated — if it times out,
+   it closes the connection anyway and returns whatever finals were collected.
+
+4. Empty transcript segments (empty text) are silently ignored and not emitted.
+
+5. On unexpected WebSocket closure, an error is emitted on the transcript stream (not
+   thrown) so the RecordingService can transition to error state and preserve transcript.
+
+6. The RecordingService clears partial text when a final arrives, per the PRD's
+   "keep it simple" guidance.
+
+7. Providers use @riverpod annotation (code generation). The .g.dart part files
+   will need `dart run build_runner build` to generate.
+
+DEPENDENCIES ON OTHER AGENTS
+-----------------------------
+- Agent 1: AudioService interface at package:yap/services/audio/audio_service.dart
+  (VERIFIED — file exists and interface matches our usage)
+- Agent 1: audioServiceProvider — must be a Riverpod provider returning AudioService
+  (NOT YET CREATED — recording_providers.dart imports it)
+- Agent 3: assemblyAIApiKeyProvider from package:yap/features/settings/settings_providers.dart
+  (NOT YET CREATED — recording_providers.dart imports it)
+
+KNOWN ISSUES / TODOS FOR INTEGRATION
+-------------------------------------
+1. recording_providers.g.dart and assemblyai_service.g.dart need code generation
+   (`dart run build_runner build`). Will fail until pubspec.yaml has riverpod_annotation
+   and build_runner configured.
+
+2. recording_providers.dart imports audioServiceProvider and assemblyAIApiKeyProvider
+   which don't exist yet. Will cause compile errors until Agent 1 and Agent 3 deliver.
+
+3. The mock AudioService in tests matches the current AudioService interface. If Agent 1
+   changes the interface, tests will need updating.
+
+4. No integration test that connects to a real AssemblyAI endpoint (by design — that
+   requires a real API key and network access).

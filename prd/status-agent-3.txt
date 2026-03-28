@@ -1,0 +1,113 @@
+Agent 3 — LLM Processing & Data Layer — Status Report
+======================================================
+
+FILES CREATED (19 files total)
+------------------------------
+
+1.  lib/shared/prompts/default_prompts.dart
+2.  lib/services/database/tables/history_table.dart
+3.  lib/services/database/tables/prompt_profiles_table.dart
+4.  lib/services/database/tables/settings_table.dart
+5.  lib/services/database/daos/history_dao.dart
+6.  lib/services/database/daos/prompt_profile_dao.dart
+7.  lib/services/database/daos/settings_dao.dart
+8.  lib/services/database/database.dart
+9.  lib/services/claude/claude_config.dart
+10. lib/services/claude/claude_models.dart
+11. lib/services/claude/claude_service.dart
+12. lib/features/processing/processing_state.dart
+13. lib/features/processing/processing_service.dart
+14. lib/features/processing/processing_providers.dart
+15. lib/features/settings/settings_service.dart
+16. lib/features/settings/settings_providers.dart
+17. lib/features/history/history_service.dart
+18. lib/features/history/history_providers.dart
+19. test/services/claude_service_test.dart
+20. test/services/database_test.dart
+21. test/features/processing_service_test.dart
+22. test/features/settings_service_test.dart
+
+IMPLEMENTATION STATUS
+---------------------
+
+All 19 files are FULLY IMPLEMENTED — no stubs. Every method has real logic.
+
+- Default Prompts: All 4 profiles defined as constants (slots 1-4).
+- Database: Drift database with 3 tables (History, PromptProfiles, Settings).
+  All 3 DAOs have complete CRUD + watch/stream methods.
+  onCreate migration seeds the 4 default prompt profiles.
+  AppDatabase.forTesting() constructor for in-memory test databases.
+- Claude Service: Full SSE streaming implementation using Dio ResponseType.stream.
+  Parses content_block_delta events for text chunks.
+  Handles message_stop, error events.
+  validateApiKey() sends a minimal request to check credentials.
+  Three typed exceptions: ClaudeAuthException, ClaudeRateLimitException, ClaudeApiException.
+  API keys are never logged or included in error messages.
+- Processing Service: Orchestrates profile lookup -> API key check -> Claude streaming.
+  Emits ProcessingState to a broadcast StreamController.
+  Supports cancel() and reset().
+  Throws EmptyProfileException and NoApiKeyException.
+- Settings Service: Typed getters/setters for all 7 settings keys.
+  Returns sensible defaults when no value is stored.
+  Handles corrupted values gracefully (falls back to defaults).
+- History Service: Full CRUD with saveEntry checking isEnabled before writing.
+  Reactive watchEntries() stream for the UI.
+- Providers: All Riverpod providers defined (manual style, not codegen).
+  databaseProvider is a singleton; disposes on ref.onDispose.
+  All settings exposed as individual FutureProviders.
+
+DECISIONS MADE
+--------------
+
+1. Used manual Riverpod providers (Provider, FutureProvider, StreamProvider)
+   rather than @riverpod codegen annotations, because codegen requires
+   build_runner to be set up and the PRD showed both styles. Manual providers
+   are immediately usable without code generation.
+
+2. The database.dart file uses `part 'database.g.dart'` and the DAOs use
+   `part 'xxx_dao.g.dart'` — these generated files will be created when
+   `dart run build_runner build` is run after Agent 1 sets up pubspec.yaml.
+   The source code is complete and correct for Drift codegen.
+
+3. The databaseProvider (singleton) is defined in processing_providers.dart
+   since it's the natural home. Settings and history providers import it
+   from there.
+
+4. ClaudeService uses Dio's ResponseType.stream to get a Stream<List<int>>
+   which is parsed as SSE. Buffer handling accounts for events split across
+   TCP chunks.
+
+5. SettingsDao.set() uses insertOnConflictUpdate for upsert semantics.
+
+6. HistoryService.saveEntry() silently returns without saving if history is
+   disabled — the caller doesn't need to check.
+
+7. ProcessingServiceImpl uses await-for on the Claude stream rather than
+   listen(), so cancellation works by checking state inside the loop.
+
+KNOWN ISSUES / TODOS FOR INTEGRATION
+-------------------------------------
+
+1. CODEGEN REQUIRED: After pubspec.yaml is in place with drift, drift_dev,
+   and build_runner dependencies, run:
+     dart run build_runner build --delete-conflicting-outputs
+   This generates: database.g.dart, history_dao.g.dart,
+   prompt_profile_dao.g.dart, settings_dao.g.dart.
+
+2. The database path uses path_provider's getApplicationSupportDirectory().
+   On Windows this maps to %APPDATA%. Agent 1 needs to include path_provider
+   and sqlite3_flutter_libs in pubspec.yaml.
+
+3. Required pubspec.yaml dependencies:
+   - drift, drift_dev (dev), build_runner (dev)
+   - dio
+   - flutter_riverpod
+   - path_provider
+   - path
+   - sqlite3_flutter_libs
+
+4. Tests use NativeDatabase.memory() which requires sqlite3_flutter_libs
+   or sqlite3 native library to be available in the test environment.
+
+5. The processing_providers.dart exports databaseProvider — if Agent 1 has
+   a separate database provider, they may need to be unified.

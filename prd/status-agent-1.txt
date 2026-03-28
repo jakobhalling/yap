@@ -1,0 +1,151 @@
+Agent 1 — Platform Layer & App Scaffold — Status Report
+=========================================================
+
+COMPLETED: 2026-03-28
+
+FILES CREATED
+=============
+
+Dart (lib/)
+-----------
+lib/main.dart                                  - App entry point with window_manager init
+lib/app.dart                                   - MaterialApp with Riverpod, OS-aware theming
+lib/shared/theme/app_theme.dart                - Light/dark ThemeData, overlay colours, text styles
+lib/services/hotkey/hotkey_service.dart         - Abstract HotkeyService interface
+lib/services/hotkey/hotkey_service_impl.dart    - Platform channel wrapper (MethodChannel + EventChannel)
+lib/services/hotkey/mock_hotkey_service.dart    - Mock for testing (simulateDoubleTap helper)
+lib/services/audio/audio_service.dart          - Abstract AudioService interface
+lib/services/audio/audio_service_impl.dart     - Platform channel wrapper (MethodChannel + EventChannel)
+lib/services/audio/mock_audio_service.dart     - Mock for testing (pushAudioChunk helper)
+lib/services/paste/paste_service.dart          - Abstract PasteService interface
+lib/services/paste/paste_service_impl.dart     - Platform channel wrapper (MethodChannel)
+lib/services/paste/mock_paste_service.dart     - Mock for testing (records calls)
+
+macOS Native (macos/)
+---------------------
+macos/Runner/AppDelegate.swift                          - Registers all 3 platform channels
+macos/Runner/PlatformChannels/HotkeyChannel.swift       - CGEventTap Left Cmd double-tap detection
+macos/Runner/PlatformChannels/AudioCaptureChannel.swift - AVAudioEngine mic capture -> 16kHz PCM
+macos/Runner/PlatformChannels/PasteChannel.swift        - NSPasteboard + CGEvent Cmd+V simulation
+
+Windows Native (windows/)
+-------------------------
+windows/runner/platform_channels/hotkey_channel.h       - Header
+windows/runner/platform_channels/hotkey_channel.cpp     - WH_KEYBOARD_LL Left Alt double-tap detection
+windows/runner/platform_channels/audio_capture_channel.h   - Header
+windows/runner/platform_channels/audio_capture_channel.cpp - WASAPI mic capture -> 16kHz PCM
+windows/runner/platform_channels/paste_channel.h        - Header
+windows/runner/platform_channels/paste_channel.cpp      - OpenClipboard + SendInput Ctrl+V simulation
+windows/runner/platform_channels/platform_channels.h    - Convenience header to register all channels
+
+Assets
+------
+assets/sounds/.gitkeep                         - Placeholder (see note below)
+scripts/generate_sounds.py                     - Run to generate record_start.wav / record_stop.wav
+
+Tests
+-----
+test/services/hotkey_service_test.dart         - Tests for impl + mock
+test/services/audio_service_test.dart          - Tests for impl + mock
+test/services/paste_service_test.dart          - Tests for impl + mock
+
+Config
+------
+pubspec.yaml                                   - All dependencies per PRD
+analysis_options.yaml                          - Lint rules
+
+
+WHAT IS FULLY IMPLEMENTED
+=========================
+
+1. All three Dart abstract interfaces (HotkeyService, AudioService, PasteService)
+   - Exact signatures from the PRD
+
+2. All three platform channel Dart wrappers
+   - HotkeyServiceImpl: MethodChannel + EventChannel, broadcast stream, threshold validation
+   - AudioServiceImpl: MethodChannel + EventChannel, isCapturing state, permission methods
+   - PasteServiceImpl: MethodChannel, single paste method
+
+3. All three mock implementations
+   - MockHotkeyService: simulateDoubleTap(), isStarted, threshold tracking
+   - MockAudioService: pushAudioChunk(), permissionGranted setter, isCapturing
+   - MockPasteService: pastedTexts list, shouldSucceed flag
+
+4. macOS Swift native code (all three channels)
+   - HotkeyChannel: CGEventTap on flagsChanged, Left Cmd (keycode 55), AXIsProcessTrusted check
+   - AudioCaptureChannel: AVAudioEngine + AVAudioConverter to 16kHz/mono/16-bit
+   - PasteChannel: NSPasteboard save/restore + CGEvent Cmd+V simulation
+
+5. Windows C++ native code (all three channels)
+   - HotkeyChannel: SetWindowsHookEx WH_KEYBOARD_LL on VK_LMENU
+   - AudioCaptureChannel: WASAPI capture with 16kHz/mono/16-bit target format
+   - PasteChannel: OpenClipboard/SetClipboardData + SendInput Ctrl+V
+
+6. App scaffold
+   - main.dart: WidgetsFlutterBinding, window_manager init (frameless, hidden, skip taskbar)
+   - app.dart: MaterialApp with ProviderScope, ThemeMode.system
+   - app_theme.dart: Light/dark themes, overlay background colors, transcript text styles
+
+7. Unit tests for all three service wrappers and mocks
+
+
+DECISIONS MADE
+==============
+
+1. EventChannel names: Used "com.yap.hotkey/events" and "com.yap.audio/samples"
+   as sub-paths of the main method channel names. This is a Flutter convention.
+
+2. HotkeyServiceImpl.start() accepts an optional threshold parameter (defaults to 400)
+   so it can be passed in the initial start call to native.
+
+3. Constructor injection: All *Impl classes accept optional MethodChannel/EventChannel
+   parameters for testability. Default to the real channel names.
+
+4. Sound assets: Could not generate binary WAV files without shell access. Created a
+   Python script (scripts/generate_sounds.py) that must be run once to produce the
+   actual WAV files. The pubspec.yaml already references assets/sounds/.
+
+5. Windows platform_channels.h: Created a convenience header with a RegisterPlatformChannels()
+   function. The existing windows/runner/main.cpp (from flutter create) will need to
+   #include this and call RegisterPlatformChannels after engine start.
+
+6. macOS AppDelegate: Overrode applicationShouldTerminateAfterLastWindowClosed to return
+   false since this is a tray-only app.
+
+7. Audio format on Windows: WASAPI initialization first tries 16kHz/mono/16-bit directly.
+   If the device doesn't support it, falls back to the device's mix format (resampling
+   would be needed — see TODO below).
+
+
+KNOWN ISSUES / TODOS FOR INTEGRATION
+=====================================
+
+1. SOUND ASSETS NOT YET GENERATED: Run `python scripts/generate_sounds.py` to create
+   the actual .wav files. Without them, the audioplayers package will fail at runtime.
+
+2. FLUTTER PROJECT BOOTSTRAP: The project was created manually (no `flutter create`).
+   You will need to run `flutter create . --org com.yap --project-name yap` to generate
+   the platform runner scaffolding (ios/, android/, web/, linux/, .metadata, etc.), OR
+   run `flutter pub get` if the existing runner files are sufficient.
+
+3. WINDOWS CHANNEL REGISTRATION: The generated windows/runner/main.cpp from flutter create
+   needs to be modified to call RegisterPlatformChannels(). Add:
+     #include "platform_channels/platform_channels.h"
+   and call RegisterPlatformChannels(engine) after the Flutter engine starts.
+
+4. WINDOWS AUDIO RESAMPLING: If the default capture device does not natively support
+   16kHz/mono/16-bit, the audio_capture_channel.cpp falls back to the device's mix format
+   but does NOT resample. A resampler (e.g., via Windows Media Foundation) would need to
+   be added for production use.
+
+5. macOS ENTITLEMENTS: The macOS runner needs entitlements for:
+   - com.apple.security.device.audio-input (microphone)
+   - com.apple.security.automation.apple-events (accessibility)
+   These should be added to macos/Runner/DebugProfile.entitlements and Release.entitlements.
+
+6. RIVERPOD PROVIDERS: No Riverpod providers are defined for the services yet. Agent 4 (UI)
+   or a shared providers file should create Provider<HotkeyService> etc. that instantiate
+   the *Impl classes.
+
+7. NO ROUTING: app.dart has a placeholder home widget. Agent 4 will replace it with the
+   actual overlay/tray UI.

@@ -1,0 +1,65 @@
+Agent 4 — UI & System Integration: Status Report
+==================================================
+
+Files Created
+-------------
+1.  lib/features/tray/tray_service.dart
+2.  lib/features/tray/tray_providers.dart
+3.  lib/features/overlay/overlay_window.dart
+4.  lib/features/overlay/overlay_screen.dart
+5.  lib/features/overlay/overlay_controller.dart
+6.  lib/features/overlay/widgets/waveform_animation.dart
+7.  lib/features/overlay/widgets/transcript_view.dart
+8.  lib/features/overlay/widgets/profile_selector.dart
+9.  lib/features/overlay/widgets/processing_indicator.dart
+10. lib/features/overlay/widgets/elapsed_timer.dart
+11. lib/features/settings/settings_screen.dart
+12. lib/features/settings/widgets/api_keys_section.dart
+13. lib/features/settings/widgets/profiles_section.dart
+14. lib/features/settings/widgets/general_section.dart
+15. lib/features/settings/widgets/history_section.dart
+16. lib/features/history/history_screen.dart
+17. lib/features/history/widgets/history_list_item.dart
+18. lib/features/history/widgets/history_detail_view.dart
+19. test/features/overlay/overlay_controller_test.dart
+20. test/features/widgets/widget_tests.dart
+
+Fully Implemented
+-----------------
+- overlay_controller.dart: Full state machine (hidden -> recording -> transcriptComplete -> processing -> readyToPaste) with error and cancel paths. Keyboard handling for Enter, 1-4, Esc. History saving. Profile loading.
+- overlay_screen.dart: Complete widget with all state views (recording, transcriptComplete, processing, readyToPaste, error). RawKeyboardListener for keyboard capture. Sound cue playback via audioplayers on state transitions. Key hints UI.
+- overlay_window.dart: Window management via window_manager — show at top-center, hide with fade, dynamic height resizing.
+- All overlay widgets: waveform (6-bar animated), transcript_view (auto-scrolling), profile_selector (all 4 slots + Enter/Esc), processing_indicator (spinner + streaming text), elapsed_timer (mm:ss format).
+- tray_service.dart: Full system tray setup with context menu (Start/Stop Recording, History, Settings, About, Quit). Dynamic menu text update. Recording/idle icon swap.
+- tray_providers.dart: Riverpod provider wired to recordingServiceProvider.
+- settings_screen.dart: Tabbed layout with 4 sections.
+- api_keys_section.dart: Password fields with show/hide toggle, Test buttons with validation state (green check / red X). Immediate save on change.
+- profiles_section.dart: All 4 profile slots with name + system prompt fields. Reset to default for slots 1-3. Overlay preview chip. Immediate save.
+- general_section.dart: Double-tap speed slider (200-600ms), Claude model dropdown (Haiku/Sonnet/Opus), sound cues toggle, auto-start toggle.
+- history_section.dart: Enable/disable toggle, clear all with confirmation dialog, storage location display.
+- history_screen.dart: List view newest-first, empty state, tap to expand to detail.
+- history_list_item.dart: Compact row with timestamp, profile badge (colored differently for raw vs processed), text preview.
+- history_detail_view.dart: Full detail with raw transcript, processed text, pasted text, collapsible system prompt section, copy buttons for each section.
+- Tests: 13 test cases for the overlay controller state machine covering all transitions, plus widget tests for all overlay widgets.
+
+Decisions Made
+--------------
+1. OverlayWindow uses the single app window (via window_manager) rather than creating a secondary window, since Flutter desktop doesn't support multi-window natively. The main window starts hidden and is shown/hidden as the overlay.
+2. Sound cues are played in overlay_screen.dart using audioplayers on state transitions (hidden->recording = start sound, recording->other = stop sound), respecting the soundCuesEnabled setting.
+3. HistoryEntry data class is defined in history_screen.dart to allow UI compilation without Agent 3's code. During integration this should be reconciled with whatever Agent 3 produces.
+4. The test file defines local stub types for RecordingState, ProcessingState, etc. to allow independent compilation. These should be replaced with actual imports from Agent 2/3 during integration.
+5. Settings sections use try/catch around all service calls so they degrade gracefully if Agent 3 services aren't wired yet.
+6. TrayService._showAbout() currently uses debugPrint — needs a proper dialog during integration (requires a BuildContext, which the tray doesn't have directly).
+
+Known Issues / TODOs for Integration
+-------------------------------------
+1. The tray icon paths (assets/icons/tray_icon.ico, tray_icon_recording.ico) need actual icon files created and added to pubspec.yaml assets.
+2. OverlayWindow positioning assumes single-monitor — may need adjustment for multi-monitor setups via screen_retriever.
+3. The overlay fade-in animation (150ms as per spec) is not implemented — window_manager opacity changes are instant. Could be done with an AnimatedOpacity widget inside overlay_screen.dart instead.
+4. Settings providers (settingsServiceProvider, claudeServiceProvider, promptProfileDaoProvider, historyServiceProvider) are imported from Agent 3's expected paths — need to verify the actual provider names and signatures match.
+5. RecordingService.cancelRecording() — verify Agent 2 exposes this method.
+6. ProcessingService.processWithProfile(transcript, slot) — verify Agent 3's actual signature.
+7. HistoryService.saveEntry() — verify Agent 3's actual parameter names.
+8. The app.dart still has a _PlaceholderHome — during integration, the App widget should be updated to use OverlayScreen and initialize OverlayController + TrayService.
+9. Tests use Future.delayed for async assertions — may be flaky in CI. Consider using expectLater with stream matchers.
+10. RawKeyboardListener is deprecated in favor of KeyboardListener in newer Flutter versions — should migrate during integration.
