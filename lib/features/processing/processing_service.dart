@@ -75,6 +75,15 @@ class ProcessingServiceImpl implements ProcessingService {
     required String transcript,
     required int profileSlot,
   }) async {
+    // 0. Validate transcript is not empty.
+    if (transcript.trim().isEmpty) {
+      _emit(ProcessingState(
+        status: ProcessingStatus.error,
+        errorMessage: 'No transcript to process — try speaking louder or longer',
+      ));
+      return;
+    }
+
     // 1. Look up the prompt profile.
     final profile = await _profileDao.getProfile(profileSlot);
     if (profile == null || profile.systemPrompt.trim().isEmpty) {

@@ -4,22 +4,36 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:audioplayers/audioplayers.dart';
+import 'package:google_fonts/google_fonts.dart';
 
 import 'package:yap/features/overlay/overlay_controller.dart';
-import 'package:yap/features/overlay/widgets/elapsed_timer.dart';
-import 'package:yap/features/overlay/widgets/processing_indicator.dart';
-import 'package:yap/features/overlay/widgets/profile_selector.dart';
-import 'package:yap/features/overlay/widgets/transcript_view.dart';
 import 'package:yap/features/overlay/widgets/waveform_animation.dart';
-import 'package:yap/shared/theme/app_theme.dart';
 
-/// The widget rendered inside the overlay window.
-///
-/// Listens to [OverlayController.stateStream] and switches between recording,
-/// transcript complete, processing, ready-to-paste, and error views.
+// ─── Typography ──────────────────────────────────────────────────────────────
+
+TextStyle _font(double size, {FontWeight weight = FontWeight.w300, Color color = Colors.white}) {
+  return GoogleFonts.inter(
+    fontSize: size,
+    fontWeight: weight,
+    color: color,
+    letterSpacing: 0.2,
+    height: 1.4,
+  );
+}
+
+TextStyle _mono(double size, {Color color = Colors.white54}) {
+  return GoogleFonts.jetBrainsMono(
+    fontSize: size,
+    fontWeight: FontWeight.w400,
+    color: color,
+    height: 1.5,
+  );
+}
+
+// ─── Overlay Screen ──────────────────────────────────────────────────────────
+
 class OverlayScreen extends ConsumerStatefulWidget {
   final OverlayController controller;
-
   const OverlayScreen({super.key, required this.controller});
 
   @override
@@ -46,30 +60,21 @@ class _OverlayScreenState extends ConsumerState<OverlayScreen> {
   void _onStateChange(YapOverlayState s) {
     final prev = _previousPhase;
     _previousPhase = s.phase;
-
-    // Play sound cues on state transitions.
     if (prev == OverlayPhase.hidden && s.phase == OverlayPhase.recording) {
       _playSound('assets/sounds/record_start.wav');
-    } else if (prev == OverlayPhase.recording &&
-        s.phase != OverlayPhase.recording) {
+    } else if (prev == OverlayPhase.recording && s.phase != OverlayPhase.recording) {
       _playSound('assets/sounds/record_stop.wav');
     }
-
     if (mounted) {
       setState(() => _state = s);
-      // Ensure keyboard focus when overlay is visible.
-      if (s.phase != OverlayPhase.hidden) {
-        _focusNode.requestFocus();
-      }
+      if (s.phase != OverlayPhase.hidden) _focusNode.requestFocus();
     }
   }
 
   Future<void> _playSound(String path) async {
     try {
       await _audioPlayer.play(AssetSource(path.replaceFirst('assets/', '')));
-    } catch (_) {
-      // Non-critical.
-    }
+    } catch (_) {}
   }
 
   @override
@@ -82,18 +87,12 @@ class _OverlayScreenState extends ConsumerState<OverlayScreen> {
 
   void _onKey(RawKeyEvent event) {
     if (event is! RawKeyDownEvent) return;
-    _ctrl.handleKey(event.logicalKey);
+    _ctrl.handleKey(event.logicalKey, isAltPressed: event.isAltPressed);
   }
 
   @override
   Widget build(BuildContext context) {
-    final isDark = MediaQuery.platformBrightnessOf(context) == Brightness.dark;
-    final bgColor =
-        isDark ? AppTheme.overlayBackgroundDark : AppTheme.overlayBackgroundLight;
-
-    if (_state.phase == OverlayPhase.hidden) {
-      return const SizedBox.shrink();
-    }
+    if (_state.phase == OverlayPhase.hidden) return const SizedBox.shrink();
 
     return RawKeyboardListener(
       focusNode: _focusNode,
@@ -103,177 +102,239 @@ class _OverlayScreenState extends ConsumerState<OverlayScreen> {
         color: Colors.transparent,
         child: Container(
           decoration: BoxDecoration(
-            color: bgColor,
-            borderRadius: BorderRadius.circular(12),
+            color: const Color(0xFF0A0A0A),
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(color: Colors.white.withValues(alpha: 0.06)),
             boxShadow: [
               BoxShadow(
-                color: Colors.black.withOpacity(0.25),
-                blurRadius: 20,
-                offset: const Offset(0, 4),
+                color: Colors.black.withValues(alpha: 0.5),
+                blurRadius: 24,
+                offset: const Offset(0, 8),
               ),
             ],
           ),
           clipBehavior: Clip.antiAlias,
-          child: _buildBody(context),
+          child: _buildBody(),
         ),
       ),
     );
   }
 
-  Widget _buildBody(BuildContext context) {
+  Widget _buildBody() {
     switch (_state.phase) {
       case OverlayPhase.hidden:
         return const SizedBox.shrink();
-
       case OverlayPhase.recording:
-        return _recordingView(context);
-
+        return _recordingView();
       case OverlayPhase.transcriptComplete:
-        return _transcriptCompleteView(context);
-
+        return _transcriptCompleteView();
       case OverlayPhase.processing:
-        return _processingView(context);
-
+        return _processingView();
       case OverlayPhase.readyToPaste:
-        return _readyToPasteView(context);
-
+        return _readyToPasteView();
+      case OverlayPhase.copied:
+        return _copiedView();
       case OverlayPhase.error:
-        return _errorView(context);
+        return _errorView();
     }
   }
 
-  Widget _recordingView(BuildContext context) {
+  // ─── Recording ─────────────────────────────────────────────────────────────
+
+  Widget _recordingView() {
+    final t = _state.transcript;
+    final display = t.length > 120 ? t.substring(t.length - 120) : t;
+
     return Padding(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
+          WaveformAnimation(audioLevel: _state.audioLevel),
+          const SizedBox(height: 6),
+          SizedBox(
+            height: 14,
+            child: Text(
+              display.isEmpty ? '' : display,
+              style: _mono(9, color: Colors.white.withValues(alpha: 0.85)),
+              maxLines: 1,
+              overflow: TextOverflow.clip,
+              textAlign: TextAlign.center,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ─── Transcript Complete ───────────────────────────────────────────────────
+
+  Widget _transcriptCompleteView() {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(20, 16, 20, 14),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Header
+          Row(
+            children: [
+              Text(
+                'ready',
+                style: _font(11, weight: FontWeight.w500, color: Colors.white38),
+              ),
+              const SizedBox(width: 8),
+              Text(
+                '${_state.transcript.length} chars · ${_state.elapsed.inSeconds}s',
+                style: _mono(9, color: Colors.white24),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+
+          // Transcript preview
+          ConstrainedBox(
+            constraints: const BoxConstraints(maxHeight: 120),
+            child: SingleChildScrollView(
+              child: Text(
+                _state.transcript,
+                style: _font(12, color: Colors.white70),
+              ),
+            ),
+          ),
+          const SizedBox(height: 14),
+
+          // Actions
+          _divider(),
+          const SizedBox(height: 10),
+          Row(
+            children: [
+              _key('↵', 'paste raw'),
+              const SizedBox(width: 12),
+              ..._state.profiles
+                  .where((p) => !p.isEmpty)
+                  .map((p) => Padding(
+                        padding: const EdgeInsets.only(right: 12),
+                        child: _key('${p.slot}', p.name.toLowerCase()),
+                      )),
+              const Spacer(),
+              _copyButton(),
+              const SizedBox(width: 12),
+              _key('esc', 'cancel', muted: true),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ─── Processing ────────────────────────────────────────────────────────────
+
+  Widget _processingView() {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(20, 16, 20, 14),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Header with spinner
+          Row(
+            children: [
+              _spinner(),
+              const SizedBox(width: 8),
+              Text(
+                _state.profileName?.toLowerCase() ?? 'processing',
+                style: _font(11, weight: FontWeight.w500, color: Colors.white54),
+              ),
+              const Spacer(),
+              Text(
+                '${_state.processedText.length} chars',
+                style: _mono(9, color: Colors.white24),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+
+          // Streaming output
+          if (_state.processedText.isNotEmpty)
+            ConstrainedBox(
+              constraints: const BoxConstraints(maxHeight: 200),
+              child: SingleChildScrollView(
+                reverse: true,
+                child: Text(
+                  _state.processedText,
+                  style: _font(12, color: Colors.white70),
+                ),
+              ),
+            )
+          else
+            Text(
+              'waiting for response...',
+              style: _font(11, color: Colors.white24),
+            ),
+          const SizedBox(height: 12),
+          _divider(),
+          const SizedBox(height: 8),
+          _key('esc', 'cancel', muted: true),
+        ],
+      ),
+    );
+  }
+
+  // ─── Ready to Paste ────────────────────────────────────────────────────────
+
+  Widget _readyToPasteView() {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(20, 16, 20, 14),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Header
           Row(
             children: [
               Container(
-                width: 10,
-                height: 10,
+                width: 6,
+                height: 6,
                 decoration: const BoxDecoration(
-                  color: Colors.red,
+                  color: Color(0xFF4ADE80),
                   shape: BoxShape.circle,
                 ),
               ),
               const SizedBox(width: 8),
               Text(
-                'Recording',
-                style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                      color: Colors.red,
-                      fontWeight: FontWeight.w600,
-                    ),
-              ),
-              const Spacer(),
-              ElapsedTimerWidget(elapsed: _state.elapsed),
-            ],
-          ),
-          const SizedBox(height: 12),
-          const WaveformAnimation(),
-          const SizedBox(height: 12),
-          if (_state.transcript.isNotEmpty)
-            Flexible(
-              child: TranscriptView(
-                text: _state.transcript,
-                isStreaming: true,
-              ),
-            ),
-          const SizedBox(height: 8),
-          Text(
-            'Double-tap to stop recording',
-            style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                  color: Theme.of(context).colorScheme.onSurfaceVariant,
-                ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _transcriptCompleteView(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.all(16),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Row(
-            children: [
-              Icon(
-                Icons.check_circle,
-                size: 18,
-                color: Theme.of(context).colorScheme.primary,
+                'done',
+                style: _font(11, weight: FontWeight.w500, color: const Color(0xFF4ADE80)),
               ),
               const SizedBox(width: 8),
               Text(
-                'Transcript ready',
-                style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                      fontWeight: FontWeight.w600,
-                    ),
+                '${_state.processedText.length} chars',
+                style: _mono(9, color: Colors.white24),
               ),
-              const Spacer(),
-              ElapsedTimerWidget(elapsed: _state.elapsed),
             ],
           ),
-          const SizedBox(height: 12),
-          Flexible(
-            child: TranscriptView(
-              text: _state.transcript,
-              isStreaming: false,
+          const SizedBox(height: 10),
+
+          // Result
+          ConstrainedBox(
+            constraints: const BoxConstraints(maxHeight: 200),
+            child: SingleChildScrollView(
+              child: Text(
+                _state.processedText,
+                style: _font(12, color: Colors.white.withValues(alpha: 0.85)),
+              ),
             ),
           ),
-          const SizedBox(height: 12),
-          ProfileSelector(
-            profiles: _state.profiles,
-            selectedSlot: null,
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _processingView(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.all(16),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          ProcessingIndicator(
-            profileName: _state.profileName ?? 'Profile',
-            streamingText: _state.processedText,
-            isComplete: false,
-          ),
-          const SizedBox(height: 8),
-          Text(
-            'Esc to cancel',
-            style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                  color: Theme.of(context).colorScheme.onSurfaceVariant,
-                ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _readyToPasteView(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.all(16),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          ProcessingIndicator(
-            profileName: _state.profileName ?? 'Profile',
-            streamingText: _state.processedText,
-            isComplete: true,
-          ),
-          const SizedBox(height: 12),
+          const SizedBox(height: 14),
+          _divider(),
+          const SizedBox(height: 10),
           Row(
-            mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              _keyHint(context, 'Enter', 'Paste'),
-              const SizedBox(width: 24),
-              _keyHint(context, 'Esc', 'Cancel'),
+              _key('↵', 'paste'),
+              const Spacer(),
+              _copyButton(),
+              const SizedBox(width: 12),
+              _key('esc', 'cancel', muted: true),
             ],
           ),
         ],
@@ -281,36 +342,74 @@ class _OverlayScreenState extends ConsumerState<OverlayScreen> {
     );
   }
 
-  Widget _errorView(BuildContext context) {
+  // ─── Copied ────────────────────────────────────────────────────────────────
+
+  Widget _copiedView() {
     return Padding(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 20),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const Icon(Icons.check_rounded, color: Color(0xFF4ADE80), size: 16),
+          const SizedBox(width: 8),
+          Text(
+            'copied to clipboard',
+            style: _font(12, weight: FontWeight.w400, color: const Color(0xFF4ADE80)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ─── Error ─────────────────────────────────────────────────────────────────
+
+  Widget _errorView() {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(20, 16, 20, 14),
       child: Column(
         mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             children: [
-              const Icon(Icons.error_outline, size: 18, color: Colors.red),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Text(
-                  _state.errorMessage ?? 'An error occurred',
-                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                        color: Colors.red,
-                      ),
-                  maxLines: 3,
-                  overflow: TextOverflow.ellipsis,
+              Container(
+                width: 6,
+                height: 6,
+                decoration: const BoxDecoration(
+                  color: Color(0xFFEF4444),
+                  shape: BoxShape.circle,
                 ),
+              ),
+              const SizedBox(width: 8),
+              Text(
+                'error',
+                style: _font(11, weight: FontWeight.w500, color: const Color(0xFFEF4444)),
               ),
             ],
           ),
-          const SizedBox(height: 12),
+          const SizedBox(height: 10),
+          SelectableText(
+            _state.errorMessage ?? 'Something went wrong',
+            style: _mono(10, color: const Color(0xFFEF4444).withValues(alpha: 0.8)),
+            maxLines: 4,
+          ),
+          if (_state.transcript.isNotEmpty) ...[
+            const SizedBox(height: 8),
+            Text(
+              '${_state.transcript.length} chars captured',
+              style: _mono(9, color: Colors.white24),
+            ),
+          ],
+          const SizedBox(height: 14),
+          _divider(),
+          const SizedBox(height: 10),
           Row(
-            mainAxisAlignment: MainAxisAlignment.center,
             children: [
               if (_state.transcript.isNotEmpty)
-                _keyHint(context, 'Enter', 'Paste raw transcript'),
-              if (_state.transcript.isNotEmpty) const SizedBox(width: 24),
-              _keyHint(context, 'Esc', 'Dismiss'),
+                _key('↵', 'paste raw'),
+              const Spacer(),
+              _key('esc', 'dismiss', muted: true),
             ],
           ),
         ],
@@ -318,31 +417,69 @@ class _OverlayScreenState extends ConsumerState<OverlayScreen> {
     );
   }
 
-  Widget _keyHint(BuildContext context, String key, String label) {
+  // ─── Shared components ─────────────────────────────────────────────────────
+
+  Widget _key(String k, String label, {bool muted = false}) {
+    final keyColor = muted ? Colors.white24 : Colors.white54;
+    final labelColor = muted ? Colors.white.withValues(alpha: 0.2) : Colors.white38;
+
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
         Container(
-          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+          padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
           decoration: BoxDecoration(
-            border: Border.all(
-              color: Theme.of(context).colorScheme.outline.withOpacity(0.5),
-            ),
-            borderRadius: BorderRadius.circular(4),
+            border: Border.all(color: keyColor.withValues(alpha: 0.4)),
+            borderRadius: BorderRadius.circular(3),
           ),
-          child: Text(
-            key,
-            style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                  fontWeight: FontWeight.w600,
-                ),
-          ),
+          child: Text(k, style: _mono(9, color: keyColor)),
         ),
-        const SizedBox(width: 6),
-        Text(
-          label,
-          style: Theme.of(context).textTheme.bodySmall,
-        ),
+        const SizedBox(width: 5),
+        Text(label, style: _font(10, color: labelColor)),
       ],
+    );
+  }
+
+  Widget _copyButton() {
+    return Tooltip(
+      message: 'Copy to clipboard (Alt+C)',
+      child: InkWell(
+        onTap: () => _ctrl.copyCurrentAndClose(),
+        borderRadius: BorderRadius.circular(4),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                Icons.content_copy_rounded,
+                size: 12,
+                color: Colors.white.withValues(alpha: 0.5),
+              ),
+              const SizedBox(width: 4),
+              Text('alt+c', style: _mono(8, color: Colors.white.withValues(alpha: 0.35))),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _divider() {
+    return Container(
+      height: 1,
+      color: Colors.white.withValues(alpha: 0.06),
+    );
+  }
+
+  Widget _spinner() {
+    return SizedBox(
+      width: 10,
+      height: 10,
+      child: CircularProgressIndicator(
+        strokeWidth: 1.5,
+        color: Colors.white.withValues(alpha: 0.4),
+      ),
     );
   }
 }

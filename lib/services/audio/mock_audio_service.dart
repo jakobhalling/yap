@@ -4,11 +4,11 @@ import 'dart:typed_data';
 import 'audio_service.dart';
 
 /// Mock implementation of [AudioService] for use in tests.
-///
-/// Call [pushAudioChunk] to manually emit audio data on the stream.
 class MockAudioService implements AudioService {
   final StreamController<Uint8List> _controller =
       StreamController<Uint8List>.broadcast();
+  final StreamController<double> _levelController =
+      StreamController<double>.broadcast();
 
   bool _isCapturing = false;
   bool _hasPermission = true;
@@ -17,10 +17,13 @@ class MockAudioService implements AudioService {
   Stream<Uint8List> get audioStream => _controller.stream;
 
   @override
+  Stream<double> get audioLevelStream => _levelController.stream;
+
+  @override
   bool get isCapturing => _isCapturing;
 
   @override
-  Future<void> startCapture() async {
+  Future<void> startCapture({String? deviceId}) async {
     if (!_hasPermission) {
       throw Exception('Microphone permission not granted');
     }
@@ -33,21 +36,26 @@ class MockAudioService implements AudioService {
   }
 
   @override
+  Future<List<AudioDevice>> listDevices() async {
+    return [
+      const AudioDevice(id: 'mock-1', name: 'Mock Microphone', isDefault: true),
+    ];
+  }
+
+  @override
   Future<bool> hasPermission() async => _hasPermission;
 
   @override
   Future<bool> requestPermission() async => _hasPermission;
 
-  /// Set whether the mock reports microphone permission as granted.
   set permissionGranted(bool value) => _hasPermission = value;
 
-  /// Push a chunk of audio data onto the stream for testing.
   void pushAudioChunk(Uint8List data) {
     _controller.add(data);
   }
 
-  /// Dispose the underlying stream controller.
   void dispose() {
     _controller.close();
+    _levelController.close();
   }
 }

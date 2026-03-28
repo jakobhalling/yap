@@ -8,14 +8,8 @@
 #include <windows.h>
 
 #include <chrono>
-#include <functional>
 #include <memory>
-#include <mutex>
 
-/// Handles the com.yap.hotkey platform channel on Windows.
-///
-/// Uses SetWindowsHookEx with WH_KEYBOARD_LL to detect double-taps
-/// of Left Alt (VK_LMENU).
 class HotkeyChannel {
  public:
   explicit HotkeyChannel(flutter::BinaryMessenger* messenger);
@@ -42,8 +36,14 @@ class HotkeyChannel {
   static HotkeyChannel* instance_;
   HHOOK hook_ = nullptr;
   int threshold_ms_ = 400;
-  std::chrono::steady_clock::time_point last_tap_time_;
-  bool last_tap_valid_ = false;
+
+  // State machine for double-tap detection.
+  // Requires: key down (quick) -> key up -> key down (within threshold).
+  // Rejects: holds, alt+key combos, slow taps.
+  enum class TapState { idle, first_down, first_up };
+  TapState state_ = TapState::idle;
+  std::chrono::steady_clock::time_point first_down_time_;
+  std::chrono::steady_clock::time_point first_up_time_;
 };
 
 #endif  // RUNNER_PLATFORM_CHANNELS_HOTKEY_CHANNEL_H_

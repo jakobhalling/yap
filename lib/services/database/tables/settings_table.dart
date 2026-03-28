@@ -21,4 +21,6 @@ class SettingsKeys {
   static const String historyEnabled = 'history_enabled'; // 'true'/'false'
   static const String autoStartOnBoot =
       'auto_start_on_boot'; // 'true'/'false'
+  static const String setupComplete = 'setup_complete'; // 'true'/'false'
+  static const String microphoneDeviceId = 'microphone_device_id'; // device ID string
 }

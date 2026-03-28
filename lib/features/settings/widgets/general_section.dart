@@ -2,8 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:yap/features/settings/settings_providers.dart';
+import 'package:yap/services/audio/audio_service.dart';
+import 'package:yap/services/providers.dart';
 
-/// General settings: double-tap speed, model selection, sound cues, auto-start.
+/// General settings: microphone, double-tap speed, model selection, sound cues, auto-start.
 class GeneralSection extends ConsumerStatefulWidget {
   const GeneralSection({super.key});
 
@@ -18,6 +20,11 @@ class _GeneralSectionState extends ConsumerState<GeneralSection> {
   bool _autoStart = false;
   bool _loading = true;
 
+  // Microphone
+  List<AudioDevice> _devices = [];
+  String? _selectedDeviceId;
+  bool _loadingDevices = true;
+
   static const _models = {
     'haiku': 'Claude Haiku',
     'sonnet': 'Claude Sonnet',
@@ -28,6 +35,7 @@ class _GeneralSectionState extends ConsumerState<GeneralSection> {
   void initState() {
     super.initState();
     _load();
+    _loadDevices();
   }
 
   Future<void> _load() async {
@@ -49,6 +57,32 @@ class _GeneralSectionState extends ConsumerState<GeneralSection> {
     } catch (_) {
       if (mounted) setState(() => _loading = false);
     }
+  }
+
+  Future<void> _loadDevices() async {
+    try {
+      final audio = ref.read(audioServiceProvider);
+      final devices = await audio.listDevices();
+      final settings = ref.read(settingsServiceProvider);
+      final savedId = await settings.getMicrophoneDeviceId();
+      if (mounted) {
+        setState(() {
+          _devices = devices;
+          _selectedDeviceId = savedId;
+          _loadingDevices = false;
+        });
+      }
+    } catch (_) {
+      if (mounted) setState(() => _loadingDevices = false);
+    }
+  }
+
+  Future<void> _setDevice(String? deviceId) async {
+    setState(() => _selectedDeviceId = deviceId);
+    try {
+      final settings = ref.read(settingsServiceProvider);
+      await settings.setMicrophoneDeviceId(deviceId);
+    } catch (_) {}
   }
 
   Future<void> _setDoubleTap(double value) async {
@@ -92,6 +126,59 @@ class _GeneralSectionState extends ConsumerState<GeneralSection> {
       padding: const EdgeInsets.all(24),
       children: [
         Text('General', style: Theme.of(context).textTheme.headlineSmall),
+        const SizedBox(height: 24),
+
+        // Microphone selection
+        Text(
+          'Microphone',
+          style: Theme.of(context).textTheme.titleMedium,
+        ),
+        const SizedBox(height: 8),
+        if (_loadingDevices)
+          const LinearProgressIndicator()
+        else if (_devices.isEmpty)
+          Text(
+            'No microphones found',
+            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                  color: Colors.red,
+                ),
+          )
+        else
+          DropdownButtonFormField<String?>(
+            value: _devices.any((d) => d.id == _selectedDeviceId)
+                ? _selectedDeviceId
+                : null,
+            decoration: const InputDecoration(border: OutlineInputBorder()),
+            items: [
+              DropdownMenuItem<String?>(
+                value: null,
+                child: Text(
+                  'System default${_devices.any((d) => d.isDefault) ? ' (${_devices.firstWhere((d) => d.isDefault).name})' : ''}',
+                ),
+              ),
+              ..._devices.map((d) => DropdownMenuItem<String?>(
+                    value: d.id,
+                    child: Text(
+                      d.name + (d.isDefault ? ' (default)' : ''),
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  )),
+            ],
+            onChanged: _setDevice,
+          ),
+        const SizedBox(height: 8),
+        Row(
+          children: [
+            TextButton.icon(
+              icon: const Icon(Icons.refresh, size: 16),
+              label: const Text('Refresh devices'),
+              onPressed: () {
+                setState(() => _loadingDevices = true);
+                _loadDevices();
+              },
+            ),
+          ],
+        ),
         const SizedBox(height: 24),
 
         // Double-tap speed

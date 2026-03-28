@@ -2,12 +2,12 @@ import 'dart:math';
 
 import 'package:flutter/material.dart';
 
-/// Animated vertical bars that pulse to indicate recording is in progress.
-///
-/// Not driven by actual audio levels — purely decorative. 6 bars animate at
-/// different frequencies and phases for an organic feel.
+/// Full-width waveform visualization driven by real microphone audio level.
+/// White bars on black background.
 class WaveformAnimation extends StatefulWidget {
-  const WaveformAnimation({super.key});
+  final double audioLevel;
+
+  const WaveformAnimation({super.key, this.audioLevel = 0.0});
 
   @override
   State<WaveformAnimation> createState() => _WaveformAnimationState();
@@ -17,17 +17,14 @@ class _WaveformAnimationState extends State<WaveformAnimation>
     with SingleTickerProviderStateMixin {
   late final AnimationController _controller;
 
-  static const int _barCount = 6;
-  // Each bar has a unique speed multiplier and phase offset.
-  static const List<double> _speeds = [1.0, 1.4, 0.9, 1.6, 1.1, 1.3];
-  static const List<double> _phases = [0, 0.5, 1.1, 0.3, 1.7, 0.8];
+  static const int _barCount = 40;
 
   @override
   void initState() {
     super.initState();
     _controller = AnimationController(
       vsync: this,
-      duration: const Duration(seconds: 2),
+      duration: const Duration(milliseconds: 800),
     )..repeat();
   }
 
@@ -40,40 +37,55 @@ class _WaveformAnimationState extends State<WaveformAnimation>
   @override
   Widget build(BuildContext context) {
     return SizedBox(
-      height: 32,
+      height: 48,
       child: AnimatedBuilder(
         animation: _controller,
         builder: (context, _) {
+          final level = widget.audioLevel.clamp(0.0, 1.0);
+
           return Row(
             mainAxisAlignment: MainAxisAlignment.center,
+            crossAxisAlignment: CrossAxisAlignment.center,
             children: List.generate(_barCount, (i) {
-              final t = _controller.value * 2 * pi * _speeds[i] + _phases[i];
-              // Map sin to [0.15, 1.0] so bars never fully disappear.
-              final normalized = (sin(t) + 1) / 2 * 0.85 + 0.15;
-              return Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 2),
-                child: _Bar(heightFraction: normalized),
+              // Create a wave pattern centered on the middle bars
+              final center = _barCount / 2;
+              final distFromCenter = (i - center).abs() / center;
+
+              // Phase varies by position for wave effect
+              final phase = i * 0.3 + _controller.value * 2 * pi;
+              final wave = sin(phase) * 0.5 + 0.5;
+
+              double height;
+              if (level < 0.01) {
+                // Idle: very subtle center pulse
+                height = 0.03 + (1 - distFromCenter) * 0.04 * wave;
+              } else {
+                // Active: bars respond to level, taller in center
+                final envelope = 1.0 - distFromCenter * 0.6;
+                height = (level * envelope * (0.5 + wave * 0.5))
+                    .clamp(0.02, 1.0);
+              }
+
+              return Expanded(
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 0.5),
+                  child: Center(
+                    child: AnimatedContainer(
+                      duration: const Duration(milliseconds: 60),
+                      height: 44 * height,
+                      decoration: BoxDecoration(
+                        color: Colors.white.withValues(
+                          alpha: level < 0.01 ? 0.2 : 0.7 + height * 0.3,
+                        ),
+                        borderRadius: BorderRadius.circular(1),
+                      ),
+                    ),
+                  ),
+                ),
               );
             }),
           );
         },
-      ),
-    );
-  }
-}
-
-class _Bar extends StatelessWidget {
-  final double heightFraction;
-  const _Bar({required this.heightFraction});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      width: 4,
-      height: 28 * heightFraction,
-      decoration: BoxDecoration(
-        color: Colors.red.withOpacity(0.85),
-        borderRadius: BorderRadius.circular(2),
       ),
     );
   }

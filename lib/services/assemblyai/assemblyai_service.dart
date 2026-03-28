@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:typed_data';
 
+import 'package:dio/dio.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
 
 import 'assemblyai_config.dart';
@@ -88,12 +89,46 @@ class AssemblyAIServiceImpl implements AssemblyAIService {
 
   Completer<void>? _terminationCompleter;
   bool _isActive = false;
+  int _audioChunksSent = 0;
+  int _messagesReceived = 0;
+
+  /// Buffer for accumulating small audio chunks before sending.
+  /// AssemblyAI requires 50-1000ms per message. At 16kHz/16-bit/mono,
+  /// 100ms = 3200 bytes.
+  final _audioBuffer = BytesBuilder(copy: false);
+  static const int _minChunkBytes = 3200; // 100ms at 16kHz/16-bit/mono
 
   @override
   Stream<TranscriptSegment> get transcriptStream => _transcriptController.stream;
 
   @override
   bool get isActive => _isActive;
+
+  /// Request a temporary authentication token from AssemblyAI REST API (v3).
+  Future<String> _getTemporaryToken(String apiKey) async {
+    final dio = Dio();
+    try {
+      final response = await dio.get(
+        AssemblyAIConfig.tokenUrl,
+        queryParameters: {'expires_in_seconds': 600},
+        options: Options(
+          headers: {
+            'Authorization': 'Bearer $apiKey',
+          },
+        ),
+      );
+      final token = response.data['token'] as String?;
+      if (token == null || token.isEmpty) {
+        throw Exception('AssemblyAI returned empty token');
+      }
+      return token;
+    } on DioException catch (e) {
+      final status = e.response?.statusCode;
+      final body = e.response?.data;
+      throw Exception(
+          'Failed to get AssemblyAI token: HTTP $status — $body');
+    }
+  }
 
   @override
   Future<void> startSession({
@@ -106,8 +141,14 @@ class AssemblyAIServiceImpl implements AssemblyAIService {
 
     _finalSegments.clear();
     _terminationCompleter = null;
+    _audioChunksSent = 0;
+    _messagesReceived = 0;
 
-    final uri = Uri.parse(AssemblyAIConfig.buildWsUrl(apiKey));
+    // Step 1: Get a temporary token via REST API.
+    final tempToken = await _getTemporaryToken(apiKey);
+
+    // Step 2: Connect WebSocket with the temporary token.
+    final uri = Uri.parse(AssemblyAIConfig.buildWsUrl(tempToken));
 
     try {
       _channel = channelFactory != null
@@ -130,15 +171,19 @@ class AssemblyAIServiceImpl implements AssemblyAIService {
       onDone: _onWsDone,
     );
 
-    // Forward audio chunks to the WebSocket as base64-encoded JSON.
+    // Forward audio chunks to the WebSocket as raw binary (v3 format).
+    // Buffer small chunks to meet AssemblyAI's 50-1000ms requirement.
+    _audioBuffer.clear();
     _audioSubscription = audioStream.listen(
       (Uint8List chunk) {
         if (!_isActive || _channel == null) return;
-        final b64 = base64Encode(chunk);
-        _channel!.sink.add(jsonEncode({'audio_data': b64}));
+        _audioBuffer.add(chunk);
+        if (_audioBuffer.length >= _minChunkBytes) {
+          _audioChunksSent++;
+          _channel!.sink.add(_audioBuffer.takeBytes());
+        }
       },
       onError: (Object error) {
-        // Audio stream errored — propagate as a transcript stream error.
         _transcriptController.addError(error);
       },
     );
@@ -150,11 +195,16 @@ class AssemblyAIServiceImpl implements AssemblyAIService {
       return _finalSegments.join(' ').trim();
     }
 
-    // Send the termination request.
-    _terminationCompleter = Completer<void>();
-    _channel!.sink.add(jsonEncode({'terminate_session': true}));
+    // Flush any remaining buffered audio.
+    if (_audioBuffer.length > 0) {
+      _channel!.sink.add(_audioBuffer.takeBytes());
+    }
 
-    // Wait for the SessionTerminated response (with a timeout).
+    // Send the v3 termination request.
+    _terminationCompleter = Completer<void>();
+    _channel!.sink.add(jsonEncode({'type': 'Terminate'}));
+
+    // Wait for the Termination response (with a timeout).
     try {
       await _terminationCompleter!.future
           .timeout(const Duration(seconds: 5));
@@ -171,6 +221,7 @@ class AssemblyAIServiceImpl implements AssemblyAIService {
   // -------------------------------------------------------------------------
 
   void _onMessage(dynamic raw) {
+    _messagesReceived++;
     if (raw is! String) return;
 
     late final Map<String, dynamic> json;
@@ -182,37 +233,38 @@ class AssemblyAIServiceImpl implements AssemblyAIService {
 
     final message = AssemblyAIMessage.fromJson(json);
 
-    if (message.isSessionTerminated) {
+    if (message.isTermination) {
       _terminationCompleter?.complete();
       return;
     }
 
-    if (message.isSessionBegins) {
+    if (message.isBegin) {
       // Session confirmed — nothing to emit yet.
       return;
     }
 
-    if (message.messageType == AssemblyAIMessageTypes.error) {
+    if (message.isError) {
       _transcriptController.addError(
         Exception('AssemblyAI error: ${message.error ?? "unknown"}'),
       );
       return;
     }
 
-    if (message.isPartial || message.isFinal) {
-      final text = message.text ?? '';
-      // Only emit non-empty segments.
+    // v3 uses Turn messages with end_of_turn for partial/final.
+    if (message.isTurn) {
+      final text = message.transcript ?? '';
       if (text.isEmpty) return;
 
+      final isFinal = message.isFinalTurn;
       final segment = TranscriptSegment(
         text: text,
-        type: message.isPartial ? TranscriptType.partial : TranscriptType.final_,
-        audioStart: (message.audioStart ?? 0) / 1000.0,
-        audioEnd: (message.audioEnd ?? 0) / 1000.0,
+        type: isFinal ? TranscriptType.final_ : TranscriptType.partial,
+        audioStart: 0,
+        audioEnd: 0,
         receivedAt: DateTime.now(),
       );
 
-      if (message.isFinal) {
+      if (isFinal) {
         _finalSegments.add(text);
       }
 
@@ -228,9 +280,13 @@ class AssemblyAIServiceImpl implements AssemblyAIService {
   void _onWsDone() {
     // WebSocket closed (could be expected or unexpected).
     if (_isActive && _terminationCompleter == null) {
-      // Unexpected closure.
+      final closeCode = _channel?.closeCode;
+      final closeReason = _channel?.closeReason;
       _transcriptController.addError(
-        Exception('WebSocket closed unexpectedly'),
+        Exception('WebSocket closed unexpectedly '
+            '(code: $closeCode, reason: $closeReason, '
+            'audio chunks sent: $_audioChunksSent, '
+            'messages received: $_messagesReceived)'),
       );
     }
     _terminationCompleter?.complete();

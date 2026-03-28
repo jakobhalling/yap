@@ -17,14 +17,13 @@ final assemblyAIServiceProvider = Provider<AssemblyAIService>((ref) {
 final recordingServiceProvider = Provider<RecordingService>((ref) {
   final audioService = ref.watch(audioServiceProvider);
   final assemblyAI = ref.watch(assemblyAIServiceProvider);
-  // Read the API key synchronously from the future provider's cached value.
-  final apiKeyAsync = ref.watch(assemblyAIApiKeyProvider);
-  final apiKey = apiKeyAsync.valueOrNull;
+  final settingsService = ref.watch(settingsServiceProvider);
 
   final service = RecordingServiceImpl(
     audioService: audioService,
     assemblyAIService: assemblyAI,
-    apiKey: apiKey,
+    getApiKey: () => settingsService.getAssemblyAIApiKey(),
+    getDeviceId: () => settingsService.getMicrophoneDeviceId(),
   );
 
   ref.onDispose(() => service.dispose());

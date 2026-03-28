@@ -23,6 +23,12 @@ abstract class SettingsService {
 
   Future<bool> getAutoStartOnBoot(); // Default: false
   Future<void> setAutoStartOnBoot(bool enabled);
+
+  Future<bool> isSetupComplete(); // Default: false
+  Future<void> setSetupComplete(bool complete);
+
+  Future<String?> getMicrophoneDeviceId(); // Default: null (system default)
+  Future<void> setMicrophoneDeviceId(String? deviceId);
 }
 
 /// Production implementation backed by the settings DAO (key-value store).
@@ -113,4 +119,31 @@ class SettingsServiceImpl implements SettingsService {
   @override
   Future<void> setAutoStartOnBoot(bool enabled) =>
       _dao.set(SettingsKeys.autoStartOnBoot, enabled.toString());
+
+  // --- Setup Complete ---
+
+  @override
+  Future<bool> isSetupComplete() async {
+    final value = await _dao.get(SettingsKeys.setupComplete);
+    if (value == null) return false;
+    return value == 'true';
+  }
+
+  @override
+  Future<void> setSetupComplete(bool complete) =>
+      _dao.set(SettingsKeys.setupComplete, complete.toString());
+
+  // --- Microphone Device ---
+
+  @override
+  Future<String?> getMicrophoneDeviceId() =>
+      _dao.get(SettingsKeys.microphoneDeviceId);
+
+  @override
+  Future<void> setMicrophoneDeviceId(String? deviceId) {
+    if (deviceId == null || deviceId.isEmpty) {
+      return _dao.deleteKey(SettingsKeys.microphoneDeviceId);
+    }
+    return _dao.set(SettingsKeys.microphoneDeviceId, deviceId);
+  }
 }

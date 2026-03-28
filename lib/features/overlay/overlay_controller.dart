@@ -10,9 +10,15 @@ import 'package:yap/features/recording/recording_state.dart';
 import 'package:yap/features/history/history_service.dart';
 import 'package:yap/features/settings/settings_service.dart';
 import 'package:yap/services/hotkey/hotkey_service.dart';
+import 'package:yap/services/audio/audio_service.dart';
 import 'package:yap/services/paste/paste_service.dart';
 import 'package:yap/services/database/daos/prompt_profile_dao.dart';
 import 'package:yap/shared/prompts/default_prompts.dart';
+
+/// Copy text to clipboard.
+Future<void> _copyToClipboard(String text) async {
+  await Clipboard.setData(ClipboardData(text: text));
+}
 
 // ---------------------------------------------------------------------------
 // State types
@@ -24,6 +30,7 @@ enum OverlayPhase {
   transcriptComplete,
   processing,
   readyToPaste,
+  copied,
   error,
 }
 
@@ -47,6 +54,7 @@ class YapOverlayState {
   final Duration elapsed;
   final String? errorMessage;
   final List<ProfileOption> profiles;
+  final double audioLevel;
 
   const YapOverlayState({
     this.phase = OverlayPhase.hidden,
@@ -56,6 +64,7 @@ class YapOverlayState {
     this.elapsed = Duration.zero,
     this.errorMessage,
     this.profiles = const [],
+    this.audioLevel = 0.0,
   });
 
   YapOverlayState copyWith({
@@ -66,6 +75,7 @@ class YapOverlayState {
     Duration? elapsed,
     String? errorMessage,
     List<ProfileOption>? profiles,
+    double? audioLevel,
   }) {
     return YapOverlayState(
       phase: phase ?? this.phase,
@@ -75,6 +85,7 @@ class YapOverlayState {
       elapsed: elapsed ?? this.elapsed,
       errorMessage: errorMessage ?? this.errorMessage,
       profiles: profiles ?? this.profiles,
+      audioLevel: audioLevel ?? this.audioLevel,
     );
   }
 }
@@ -92,6 +103,7 @@ class OverlayController {
   final OverlayWindow overlayWindow;
   final SettingsService settingsService;
   final PromptProfileDao? profileDao;
+  final AudioService audioService;
 
   OverlayController({
     required this.recordingService,
@@ -101,6 +113,7 @@ class OverlayController {
     required this.hotkeyService,
     required this.overlayWindow,
     required this.settingsService,
+    required this.audioService,
     this.profileDao,
   });
 
@@ -113,6 +126,7 @@ class OverlayController {
   StreamSubscription<void>? _hotkeySub;
   StreamSubscription<RecordingState>? _recordingSub;
   StreamSubscription<ProcessingState>? _processingSub;
+  StreamSubscription<double>? _levelSub;
   Timer? _elapsedTimer;
 
   // ---- lifecycle -----------------------------------------------------------
@@ -125,6 +139,7 @@ class OverlayController {
     _hotkeySub?.cancel();
     _recordingSub?.cancel();
     _processingSub?.cancel();
+    _levelSub?.cancel();
     _elapsedTimer?.cancel();
     _stateController.close();
   }
@@ -198,9 +213,8 @@ class OverlayController {
         elapsed: Duration.zero,
       ));
       await overlayWindow.show();
-      await recordingService.startRecording();
-      _startElapsedTimer();
 
+      // Subscribe BEFORE starting so we don't miss any transcript segments.
       _recordingSub?.cancel();
       _recordingSub = recordingService.stateStream.listen((rs) {
         if (_state.phase != OverlayPhase.recording) return;
@@ -213,6 +227,17 @@ class OverlayController {
           ));
         }
       });
+
+      // Listen to audio levels for the waveform visualization.
+      _levelSub?.cancel();
+      _levelSub = audioService.audioLevelStream.listen((level) {
+        if (_state.phase == OverlayPhase.recording) {
+          _emit(_state.copyWith(audioLevel: level));
+        }
+      });
+
+      await recordingService.startRecording();
+      _startElapsedTimer();
     } catch (e) {
       _emit(_state.copyWith(
         phase: OverlayPhase.error,
@@ -225,12 +250,20 @@ class OverlayController {
   Future<void> _stopRecording() async {
     try {
       _stopElapsedTimer();
+      _levelSub?.cancel();
+      _levelSub = null;
       await recordingService.stopRecording();
       _recordingSub?.cancel();
+
+      // Read the final transcript from the recording service state.
+      final finalTranscript = recordingService.state.finalTranscript.isNotEmpty
+          ? recordingService.state.finalTranscript
+          : recordingService.state.currentTranscript;
 
       final profiles = await _loadProfiles();
       _emit(_state.copyWith(
         phase: OverlayPhase.transcriptComplete,
+        transcript: finalTranscript.isNotEmpty ? finalTranscript : _state.transcript,
         profiles: profiles,
       ));
     } catch (e) {
@@ -243,9 +276,15 @@ class OverlayController {
 
   // ---- keyboard handling ---------------------------------------------------
 
-  Future<void> handleKey(LogicalKeyboardKey key) async {
+  Future<void> handleKey(LogicalKeyboardKey key, {bool isAltPressed = false}) async {
     if (key == LogicalKeyboardKey.escape) {
       cancel();
+      return;
+    }
+
+    // Alt+C = copy to clipboard in any copyable state
+    if (key == LogicalKeyboardKey.keyC && isAltPressed) {
+      await copyCurrentAndClose();
       return;
     }
 
@@ -284,41 +323,45 @@ class OverlayController {
     final profile = _state.profiles.where((p) => p.slot == slot).firstOrNull;
     if (profile == null || profile.isEmpty) return;
 
-    try {
-      _emit(_state.copyWith(
-        phase: OverlayPhase.processing,
-        profileName: profile.name,
-        processedText: '',
-      ));
+    _emit(_state.copyWith(
+      phase: OverlayPhase.processing,
+      profileName: profile.name,
+      processedText: '',
+    ));
 
+    // Subscribe to state stream BEFORE starting processing so we
+    // don't miss any streaming events.
+    _processingSub?.cancel();
+    _processingSub = processingService.stateStream.listen((ps) {
+      if (_state.phase != OverlayPhase.processing) return;
+      _emit(_state.copyWith(processedText: ps.streamingOutput));
+      if (ps.status == ProcessingStatus.complete) {
+        _emit(_state.copyWith(
+          phase: OverlayPhase.readyToPaste,
+          processedText: ps.finalOutput,
+        ));
+        _processingSub?.cancel();
+      } else if (ps.status == ProcessingStatus.error) {
+        _emit(_state.copyWith(
+          phase: OverlayPhase.error,
+          errorMessage: ps.errorMessage ?? 'Processing error',
+        ));
+        _processingSub?.cancel();
+      }
+    });
+
+    // Fire and forget — streaming updates come via stateStream above.
+    try {
       await processingService.processWithProfile(
         transcript: _state.transcript,
         profileSlot: slot,
       );
-
-      _processingSub?.cancel();
-      _processingSub = processingService.stateStream.listen((ps) {
-        if (_state.phase != OverlayPhase.processing) return;
-        _emit(_state.copyWith(processedText: ps.streamingOutput));
-        if (ps.status == ProcessingStatus.complete) {
-          _emit(_state.copyWith(
-            phase: OverlayPhase.readyToPaste,
-            processedText: ps.finalOutput,
-          ));
-          _processingSub?.cancel();
-        } else if (ps.status == ProcessingStatus.error) {
-          _emit(_state.copyWith(
-            phase: OverlayPhase.error,
-            errorMessage: ps.errorMessage ?? 'Processing error',
-          ));
-          _processingSub?.cancel();
-        }
-      });
     } catch (e) {
       _emit(_state.copyWith(
         phase: OverlayPhase.error,
         errorMessage: e.toString(),
       ));
+      _processingSub?.cancel();
     }
   }
 
@@ -329,6 +372,27 @@ class OverlayController {
         ? _state.processedText
         : _state.transcript;
     await _pasteAndSave(text, isProcessed: _state.processedText.isNotEmpty);
+  }
+
+  /// Copy the current relevant text (transcript or processed) to clipboard,
+  /// show confirmation, then close. Called by Alt+C or the copy button.
+  Future<void> copyCurrentAndClose() async {
+    String text = '';
+    if (_state.phase == OverlayPhase.transcriptComplete) {
+      text = _state.transcript;
+    } else if (_state.phase == OverlayPhase.readyToPaste) {
+      text = _state.processedText;
+    }
+    if (text.isEmpty) return;
+    await _copyAndClose(text);
+  }
+
+  Future<void> _copyAndClose(String text) async {
+    await _copyToClipboard(text);
+    _emit(_state.copyWith(phase: OverlayPhase.copied));
+    await Future.delayed(const Duration(milliseconds: 800));
+    _reset();
+    await overlayWindow.hide();
   }
 
   Future<void> _pasteRawAndClose() async {
@@ -369,6 +433,8 @@ class OverlayController {
       recordingService.cancelRecording();
       _stopElapsedTimer();
       _recordingSub?.cancel();
+      _levelSub?.cancel();
+      _levelSub = null;
     }
     if (_state.phase == OverlayPhase.processing) {
       processingService.cancel();

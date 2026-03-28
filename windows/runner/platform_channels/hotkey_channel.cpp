@@ -75,9 +75,9 @@ void HotkeyChannel::HandleMethodCall(
 
 void HotkeyChannel::StartMonitoring(int threshold_ms) {
   threshold_ms_ = threshold_ms;
-  last_tap_valid_ = false;
+  state_ = TapState::idle;
 
-  if (hook_) return;  // Already monitoring.
+  if (hook_) return;
 
   hook_ = SetWindowsHookExW(WH_KEYBOARD_LL, LowLevelKeyboardProc, nullptr, 0);
 }
@@ -94,29 +94,72 @@ LRESULT CALLBACK HotkeyChannel::LowLevelKeyboardProc(int nCode, WPARAM wParam,
   if (nCode == HC_ACTION && instance_) {
     auto* kbd = reinterpret_cast<KBDLLHOOKSTRUCT*>(lParam);
 
-    // Detect Left Alt key-down (WM_KEYDOWN or WM_SYSKEYDOWN).
-    if (kbd->vkCode == VK_LMENU &&
-        (wParam == WM_KEYDOWN || wParam == WM_SYSKEYDOWN)) {
+    if (kbd->vkCode == VK_LMENU) {
       auto now = std::chrono::steady_clock::now();
 
-      if (instance_->last_tap_valid_) {
-        auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
-                           now - instance_->last_tap_time_)
-                           .count();
+      bool is_down = (wParam == WM_KEYDOWN || wParam == WM_SYSKEYDOWN);
+      bool is_up = (wParam == WM_KEYUP || wParam == WM_SYSKEYUP);
 
-        if (elapsed > 0 && elapsed <= instance_->threshold_ms_) {
-          // Double-tap detected.
-          instance_->last_tap_valid_ = false;
-          if (instance_->event_sink_) {
-            instance_->event_sink_->Success(flutter::EncodableValue());
+      // State machine for double-tap detection:
+      //   idle -> first_down (on key down)
+      //   first_down -> first_up (on quick key up, must be < threshold)
+      //   first_up -> FIRE! (on second key down within threshold of first down)
+      //
+      // If the key is held down too long, reset to idle.
+      // This prevents triggering on hold or alt-tab style usage.
+
+      switch (instance_->state_) {
+        case TapState::idle:
+          if (is_down) {
+            instance_->first_down_time_ = now;
+            instance_->state_ = TapState::first_down;
           }
-        } else {
-          instance_->last_tap_time_ = now;
-          instance_->last_tap_valid_ = true;
-        }
-      } else {
-        instance_->last_tap_time_ = now;
-        instance_->last_tap_valid_ = true;
+          break;
+
+        case TapState::first_down:
+          if (is_up) {
+            // Key released — check it was a quick tap (not a hold)
+            auto held_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
+                               now - instance_->first_down_time_)
+                               .count();
+            if (held_ms < instance_->threshold_ms_) {
+              // Quick tap — advance to waiting for second tap
+              instance_->first_up_time_ = now;
+              instance_->state_ = TapState::first_up;
+            } else {
+              // Held too long — was a hold, not a tap
+              instance_->state_ = TapState::idle;
+            }
+          } else if (is_down) {
+            // Repeated key-down while held (key repeat) — ignore
+          }
+          break;
+
+        case TapState::first_up:
+          if (is_down) {
+            // Second tap down — check timing from first tap
+            auto gap_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
+                              now - instance_->first_up_time_)
+                              .count();
+            if (gap_ms <= instance_->threshold_ms_) {
+              // Double-tap detected!
+              instance_->state_ = TapState::idle;
+              if (instance_->event_sink_) {
+                instance_->event_sink_->Success(flutter::EncodableValue());
+              }
+            } else {
+              // Too slow — treat this as a new first tap
+              instance_->first_down_time_ = now;
+              instance_->state_ = TapState::first_down;
+            }
+          }
+          break;
+      }
+    } else {
+      // A different key was pressed — reset the tap state.
+      // This prevents alt+key combos from triggering.
+      if (instance_->state_ != TapState::idle) {
+        instance_->state_ = TapState::idle;
       }
     }
   }

@@ -64,12 +64,16 @@ class RecordingServiceImpl implements RecordingService {
   RecordingServiceImpl({
     required this.audioService,
     required this.assemblyAIService,
-    required this.apiKey,
+    required this.getApiKey,
+    this.getDeviceId,
   });
 
   final AudioService audioService;
   final AssemblyAIService assemblyAIService;
-  final String? apiKey;
+  /// Callback to fetch the current API key at recording time.
+  final Future<String?> Function() getApiKey;
+  /// Callback to fetch the selected microphone device ID.
+  final Future<String?> Function()? getDeviceId;
 
   /// Maximum recording duration before auto-stop.
   static const Duration maxDuration = Duration(minutes: 30);
@@ -113,8 +117,8 @@ class RecordingServiceImpl implements RecordingService {
       return; // Already in progress.
     }
 
-    // Validate API key.
-    final key = apiKey;
+    // Validate API key (fetched fresh each time).
+    final key = await getApiKey();
     if (key == null || key.isEmpty) {
       throw const NoApiKeyException();
     }
@@ -130,8 +134,9 @@ class RecordingServiceImpl implements RecordingService {
     ));
 
     try {
-      // Start audio capture.
-      await audioService.startCapture();
+      // Start audio capture with selected device.
+      final deviceId = await getDeviceId?.call();
+      await audioService.startCapture(deviceId: deviceId);
     } catch (e) {
       _emit(RecordingState(
         status: RecordingStatus.error,
@@ -201,6 +206,13 @@ class RecordingServiceImpl implements RecordingService {
       finalText = await assemblyAIService.endSession();
     } catch (e) {
       finalText = _buildFinalTranscript();
+    }
+
+    // Fallback: if finalSegments are empty (user spoke without pausing
+    // long enough for end_of_turn), use the display transcript which
+    // includes partial turns.
+    if (finalText.isEmpty) {
+      finalText = _buildDisplayTranscript();
     }
 
     await _transcriptSub?.cancel();

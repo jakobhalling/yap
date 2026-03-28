@@ -8,8 +8,7 @@ import 'package:yap/features/settings/widgets/profiles_section.dart';
 
 /// Full settings screen with tabbed sections.
 ///
-/// Opened from the system tray "Settings" menu item. All changes are saved
-/// immediately — there is no explicit save button.
+/// All changes are saved immediately — there is no explicit save button.
 class SettingsScreen extends ConsumerStatefulWidget {
   const SettingsScreen({super.key});
 
@@ -37,23 +36,24 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen>
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Yap Settings'),
-        bottom: TabBar(
+    return Column(
+      children: [
+        TabBar(
           controller: _tabController,
           tabs: _tabs.map((t) => Tab(text: t)).toList(),
         ),
-      ),
-      body: TabBarView(
-        controller: _tabController,
-        children: const [
-          ApiKeysSection(),
-          ProfilesSection(),
-          GeneralSection(),
-          HistorySection(),
-        ],
-      ),
+        Expanded(
+          child: TabBarView(
+            controller: _tabController,
+            children: const [
+              ApiKeysSection(),
+              ProfilesSection(),
+              GeneralSection(),
+              HistorySection(),
+            ],
+          ),
+        ),
+      ],
     );
   }
 }

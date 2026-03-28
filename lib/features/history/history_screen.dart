@@ -51,10 +51,7 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
       );
     }
 
-    return Scaffold(
-      appBar: AppBar(title: const Text('History')),
-      body: _buildBody(),
-    );
+    return _buildBody();
   }
 
   Widget _buildBody() {

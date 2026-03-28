@@ -1,16 +1,10 @@
-/// Data models for AssemblyAI Real-Time Streaming API messages.
+/// Data models for AssemblyAI Real-Time Streaming API v3 messages.
 
 /// Information about a single transcribed word.
 class WordInfo {
   final String text;
-
-  /// Start time in milliseconds from the beginning of the audio stream.
   final int start;
-
-  /// End time in milliseconds from the beginning of the audio stream.
   final int end;
-
-  /// Confidence score from 0.0 to 1.0.
   final double confidence;
 
   const WordInfo({
@@ -28,58 +22,45 @@ class WordInfo {
       confidence: (json['confidence'] as num?)?.toDouble() ?? 0.0,
     );
   }
-
-  Map<String, dynamic> toJson() => {
-        'text': text,
-        'start': start,
-        'end': end,
-        'confidence': confidence,
-      };
 }
 
-/// Known message types returned by the AssemblyAI real-time API.
+/// Known v3 message types returned by the AssemblyAI real-time API.
 class AssemblyAIMessageTypes {
   AssemblyAIMessageTypes._();
 
-  static const String partialTranscript = 'PartialTranscript';
-  static const String finalTranscript = 'FinalTranscript';
-  static const String sessionBegins = 'SessionBegins';
-  static const String sessionTerminated = 'SessionTerminated';
-  static const String sessionInformation = 'SessionInformation';
-  static const String error = 'error';
+  static const String begin = 'Begin';
+  static const String turn = 'Turn';
+  static const String speechStarted = 'SpeechStarted';
+  static const String termination = 'Termination';
+  static const String error = 'Error';
 }
 
-/// A deserialized message received from the AssemblyAI WebSocket.
+/// A deserialized message received from the AssemblyAI v3 WebSocket.
 class AssemblyAIMessage {
-  final String messageType;
-  final String? text;
-
-  /// Audio start time in milliseconds.
-  final int? audioStart;
-
-  /// Audio end time in milliseconds.
-  final int? audioEnd;
-
+  final String type;
+  final String? transcript;
+  final bool? endOfTurn;
+  final bool? turnIsFormatted;
+  final int? turnOrder;
+  final double? endOfTurnConfidence;
+  final String? utterance;
   final List<WordInfo>? words;
-
-  /// Session ID, present in SessionBegins messages.
-  final String? sessionId;
-
-  /// Error message, present when an error occurs.
   final String? error;
 
   const AssemblyAIMessage({
-    required this.messageType,
-    this.text,
-    this.audioStart,
-    this.audioEnd,
+    required this.type,
+    this.transcript,
+    this.endOfTurn,
+    this.turnIsFormatted,
+    this.turnOrder,
+    this.endOfTurnConfidence,
+    this.utterance,
     this.words,
-    this.sessionId,
     this.error,
   });
 
   factory AssemblyAIMessage.fromJson(Map<String, dynamic> json) {
-    final messageType = json['message_type'] as String? ?? '';
+    final type = json['type'] as String? ?? '';
 
     List<WordInfo>? words;
     if (json['words'] != null) {
@@ -89,28 +70,34 @@ class AssemblyAIMessage {
     }
 
     return AssemblyAIMessage(
-      messageType: messageType,
-      text: json['text'] as String?,
-      audioStart: json['audio_start'] as int?,
-      audioEnd: json['audio_end'] as int?,
+      type: type,
+      transcript: json['transcript'] as String?,
+      endOfTurn: json['end_of_turn'] as bool?,
+      turnIsFormatted: json['turn_is_formatted'] as bool?,
+      turnOrder: json['turn_order'] as int?,
+      endOfTurnConfidence:
+          (json['end_of_turn_confidence'] as num?)?.toDouble(),
+      utterance: json['utterance'] as String?,
       words: words,
-      sessionId: json['session_id'] as String?,
       error: json['error'] as String?,
     );
   }
 
-  /// Whether this is a partial transcript (interim, will be replaced).
-  bool get isPartial =>
-      messageType == AssemblyAIMessageTypes.partialTranscript;
+  /// Whether this is a Turn message (partial or final transcript).
+  bool get isTurn => type == AssemblyAIMessageTypes.turn;
 
-  /// Whether this is a final transcript (committed, won't change).
-  bool get isFinal => messageType == AssemblyAIMessageTypes.finalTranscript;
+  /// Whether this turn is final (end_of_turn == true).
+  bool get isFinalTurn => isTurn && (endOfTurn == true);
 
-  /// Whether the session has been terminated by the server.
-  bool get isSessionTerminated =>
-      messageType == AssemblyAIMessageTypes.sessionTerminated;
+  /// Whether this turn is partial (end_of_turn == false).
+  bool get isPartialTurn => isTurn && (endOfTurn != true);
 
-  /// Whether the session has just begun.
-  bool get isSessionBegins =>
-      messageType == AssemblyAIMessageTypes.sessionBegins;
+  /// Whether the session has begun.
+  bool get isBegin => type == AssemblyAIMessageTypes.begin;
+
+  /// Whether the session has been terminated.
+  bool get isTermination => type == AssemblyAIMessageTypes.termination;
+
+  /// Whether this is an error message.
+  bool get isError => type == AssemblyAIMessageTypes.error;
 }
