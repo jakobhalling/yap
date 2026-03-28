@@ -1,0 +1,25 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(where flutter:*)",
+      "Bash(flutter --version)",
+      "Bash(mkdir -p _backup)",
+      "Bash(cp -r macos _backup/macos_agent)",
+      "Bash(cp -r windows _backup/windows_agent)",
+      "Bash(cp lib/main.dart _backup/main.dart.bak)",
+      "Bash(cp lib/app.dart _backup/app.dart.bak)",
+      "Bash(flutter create:*)",
+      "Bash(cp -r _backup/macos_agent/Runner/PlatformChannels macos/Runner/PlatformChannels)",
+      "Bash(cp _backup/macos_agent/Runner/AppDelegate.swift macos/Runner/AppDelegate.swift)",
+      "Bash(cd:*)",
+      "Bash(flutter pub:*)",
+      "Bash(flutter analyze:*)",
+      "Bash(dart run:*)",
+      "Bash(flutter build:*)",
+      "Bash(start build/windows/x64/runner/Release/yap.exe)",
+      "Bash(taskkill /F /IM yap.exe)",
+      "Bash(taskkill //F //IM yap.exe)",
+      "WebFetch(domain:www.assemblyai.com)"
+    ]
+  }
+}
