@@ -1,5 +1,6 @@
 import '../../services/database/daos/settings_dao.dart';
 import '../../services/database/tables/settings_table.dart';
+import '../../services/startup_service.dart';
 
 /// Abstract interface for reading and writing app settings.
 abstract class SettingsService {
@@ -117,8 +118,10 @@ class SettingsServiceImpl implements SettingsService {
   }
 
   @override
-  Future<void> setAutoStartOnBoot(bool enabled) =>
-      _dao.set(SettingsKeys.autoStartOnBoot, enabled.toString());
+  Future<void> setAutoStartOnBoot(bool enabled) async {
+    await _dao.set(SettingsKeys.autoStartOnBoot, enabled.toString());
+    await StartupService.setLaunchOnStartup(enabled);
+  }
 
   // --- Setup Complete ---
 
