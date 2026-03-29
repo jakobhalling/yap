@@ -1,6 +1,7 @@
 import Cocoa
 import FlutterMacOS
 import AVFoundation
+import CoreAudio
 
 /// Handles the `com.yap.audio` platform channel.
 ///
@@ -9,7 +10,9 @@ import AVFoundation
 class AudioCaptureChannel: NSObject, FlutterStreamHandler {
     private let methodChannel: FlutterMethodChannel
     private let eventChannel: FlutterEventChannel
+    private let levelChannel: FlutterEventChannel
     private var eventSink: FlutterEventSink?
+    private var levelSink: FlutterEventSink?
 
     private var audioEngine: AVAudioEngine?
     private var isCapturing = false
@@ -27,11 +30,16 @@ class AudioCaptureChannel: NSObject, FlutterStreamHandler {
             name: "com.yap.audio/samples",
             binaryMessenger: messenger
         )
+        levelChannel = FlutterEventChannel(
+            name: "com.yap.audio/level",
+            binaryMessenger: messenger
+        )
 
         super.init()
 
         methodChannel.setMethodCallHandler(handleMethodCall)
         eventChannel.setStreamHandler(self)
+        levelChannel.setStreamHandler(LevelStreamHandler(owner: self))
     }
 
     // MARK: - MethodChannel handler
@@ -39,13 +47,16 @@ class AudioCaptureChannel: NSObject, FlutterStreamHandler {
     private func handleMethodCall(_ call: FlutterMethodCall, result: @escaping FlutterResult) {
         switch call.method {
         case "startCapture":
-            startCapture(result: result)
+            let deviceId = (call.arguments as? [String: Any])?["deviceId"] as? String
+            startCapture(deviceId: deviceId, result: result)
         case "stopCapture":
             stopCapture(result: result)
         case "hasPermission":
             result(hasPermission())
         case "requestPermission":
             requestPermission(result: result)
+        case "listDevices":
+            result(listDevices())
         default:
             result(FlutterMethodNotImplemented)
         }
@@ -72,9 +83,127 @@ class AudioCaptureChannel: NSObject, FlutterStreamHandler {
         }
     }
 
+    // MARK: - Device listing
+
+    private func listDevices() -> [[String: Any]] {
+        var devices: [[String: Any]] = []
+
+        // Get the default input device ID.
+        var defaultDeviceID = AudioDeviceID(0)
+        var propertySize = UInt32(MemoryLayout<AudioDeviceID>.size)
+        var address = AudioObjectPropertyAddress(
+            mSelector: kAudioHardwarePropertyDefaultInputDevice,
+            mScope: kAudioObjectPropertyScopeGlobal,
+            mElement: kAudioObjectPropertyElementMain
+        )
+        AudioObjectGetPropertyData(
+            AudioObjectID(kAudioObjectSystemObject),
+            &address,
+            0, nil,
+            &propertySize,
+            &defaultDeviceID
+        )
+
+        // Get all audio devices.
+        address.mSelector = kAudioHardwarePropertyDevices
+        propertySize = 0
+        AudioObjectGetPropertyDataSize(
+            AudioObjectID(kAudioObjectSystemObject),
+            &address,
+            0, nil,
+            &propertySize
+        )
+
+        let deviceCount = Int(propertySize) / MemoryLayout<AudioDeviceID>.size
+        var deviceIDs = [AudioDeviceID](repeating: 0, count: deviceCount)
+        AudioObjectGetPropertyData(
+            AudioObjectID(kAudioObjectSystemObject),
+            &address,
+            0, nil,
+            &propertySize,
+            &deviceIDs
+        )
+
+        for deviceID in deviceIDs {
+            // Check if this device has input channels.
+            var inputAddress = AudioObjectPropertyAddress(
+                mSelector: kAudioDevicePropertyStreamConfiguration,
+                mScope: kAudioDevicePropertyScopeInput,
+                mElement: kAudioObjectPropertyElementMain
+            )
+            var inputSize: UInt32 = 0
+            guard AudioObjectGetPropertyDataSize(deviceID, &inputAddress, 0, nil, &inputSize) == noErr else {
+                continue
+            }
+
+            let bufferListPointer = UnsafeMutablePointer<AudioBufferList>.allocate(capacity: 1)
+            defer { bufferListPointer.deallocate() }
+            guard AudioObjectGetPropertyData(deviceID, &inputAddress, 0, nil, &inputSize, bufferListPointer) == noErr else {
+                continue
+            }
+
+            let bufferList = UnsafeMutableAudioBufferListPointer(bufferListPointer)
+            let inputChannels = bufferList.reduce(0) { $0 + Int($1.mNumberChannels) }
+            guard inputChannels > 0 else { continue }
+
+            // Get device name.
+            var nameAddress = AudioObjectPropertyAddress(
+                mSelector: kAudioDevicePropertyDeviceNameCFString,
+                mScope: kAudioObjectPropertyScopeGlobal,
+                mElement: kAudioObjectPropertyElementMain
+            )
+            var name: CFString = "" as CFString
+            var nameSize = UInt32(MemoryLayout<CFString>.size)
+            AudioObjectGetPropertyData(deviceID, &nameAddress, 0, nil, &nameSize, &name)
+
+            devices.append([
+                "id": String(deviceID),
+                "name": name as String,
+                "isDefault": deviceID == defaultDeviceID,
+            ])
+        }
+
+        return devices
+    }
+
+    // MARK: - Set input device
+
+    private func setInputDevice(_ deviceIdString: String?) {
+        guard let deviceIdString = deviceIdString,
+              let deviceID = AudioDeviceID(deviceIdString) else {
+            return
+        }
+
+        // Verify the device exists and has input.
+        var inputAddress = AudioObjectPropertyAddress(
+            mSelector: kAudioDevicePropertyStreamConfiguration,
+            mScope: kAudioDevicePropertyScopeInput,
+            mElement: kAudioObjectPropertyElementMain
+        )
+        var inputSize: UInt32 = 0
+        guard AudioObjectGetPropertyDataSize(deviceID, &inputAddress, 0, nil, &inputSize) == noErr else {
+            return
+        }
+
+        // Set as default input device so AVAudioEngine picks it up.
+        var mutableDeviceID = deviceID
+        var address = AudioObjectPropertyAddress(
+            mSelector: kAudioHardwarePropertyDefaultInputDevice,
+            mScope: kAudioObjectPropertyScopeGlobal,
+            mElement: kAudioObjectPropertyElementMain
+        )
+        AudioObjectSetPropertyData(
+            AudioObjectID(kAudioObjectSystemObject),
+            &address,
+            0, nil,
+            UInt32(MemoryLayout<AudioDeviceID>.size),
+            &mutableDeviceID
+        )
+    }
+
     // MARK: - Capture
 
-    private func startCapture(result: @escaping FlutterResult) {
+    private func startCapture(deviceId: String?, result: @escaping FlutterResult) {
         guard !isCapturing else {
             result(nil)
             return
@@ -87,6 +216,11 @@ class AudioCaptureChannel: NSObject, FlutterStreamHandler {
                 details: nil
             ))
             return
+        }
+
+        // Set the requested input device before starting the engine.
+        if let deviceId = deviceId, !deviceId.isEmpty {
+            setInputDevice(deviceId)
         }
 
         let engine = AVAudioEngine()
@@ -121,7 +255,27 @@ class AudioCaptureChannel: NSObject, FlutterStreamHandler {
 
         inputNode.installTap(onBus: 0, bufferSize: 4096, format: inputFormat) {
             [weak self] (buffer, _) in
-            guard let self = self, let sink = self.eventSink else { return }
+            guard let self = self else { return }
+
+            // Calculate audio level (RMS) for the waveform visualization.
+            if let channelData = buffer.floatChannelData {
+                let frames = Int(buffer.frameLength)
+                var sum: Float = 0
+                for i in 0..<frames {
+                    let sample = channelData[0][i]
+                    sum += sample * sample
+                }
+                let rms = sqrt(sum / Float(max(frames, 1)))
+                let level = Double(min(rms * 3.0, 1.0)) // Scale up and clamp
+                if let sink = self.levelSink {
+                    DispatchQueue.main.async {
+                        sink(level)
+                    }
+                }
+            }
+
+            // Convert to target format for transcription.
+            guard let sink = self.eventSink else { return }
 
             guard let convertedBuffer = AVAudioPCMBuffer(
                 pcmFormat: targetFormat,
@@ -169,7 +323,7 @@ class AudioCaptureChannel: NSObject, FlutterStreamHandler {
         result(nil)
     }
 
-    // MARK: - FlutterStreamHandler
+    // MARK: - FlutterStreamHandler (audio samples)
 
     func onListen(withArguments arguments: Any?, eventSink events: @escaping FlutterEventSink) -> FlutterError? {
         eventSink = events
@@ -178,6 +332,30 @@ class AudioCaptureChannel: NSObject, FlutterStreamHandler {
 
     func onCancel(withArguments arguments: Any?) -> FlutterError? {
         eventSink = nil
+        return nil
+    }
+
+    // MARK: - Level stream handler helper
+    fileprivate func setLevelSink(_ sink: FlutterEventSink?) {
+        levelSink = sink
+    }
+}
+
+/// Separate stream handler for the audio level event channel.
+private class LevelStreamHandler: NSObject, FlutterStreamHandler {
+    weak var owner: AudioCaptureChannel?
+
+    init(owner: AudioCaptureChannel) {
+        self.owner = owner
+    }
+
+    func onListen(withArguments arguments: Any?, eventSink events: @escaping FlutterEventSink) -> FlutterError? {
+        owner?.setLevelSink(events)
+        return nil
+    }
+
+    func onCancel(withArguments arguments: Any?) -> FlutterError? {
+        owner?.setLevelSink(nil)
         return nil
     }
 }
