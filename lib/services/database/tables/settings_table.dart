@@ -23,4 +23,5 @@ class SettingsKeys {
       'auto_start_on_boot'; // 'true'/'false'
   static const String setupComplete = 'setup_complete'; // 'true'/'false'
   static const String microphoneDeviceId = 'microphone_device_id'; // device ID string
+  static const String triggerKey = 'trigger_key'; // modifier key identifier string
 }

@@ -30,7 +30,7 @@ class HotkeyServiceImpl implements HotkeyService {
   }
 
   @override
-  Future<void> start({int threshold = 400}) async {
+  Future<void> start({int threshold = 400, String? triggerKey}) async {
     _controller ??= StreamController<void>.broadcast();
 
     // Subscribe to the native event stream.
@@ -41,10 +41,11 @@ class HotkeyServiceImpl implements HotkeyService {
       _controller?.addError(error);
     });
 
-    await _methodChannel.invokeMethod<void>(
-      'start',
-      <String, dynamic>{'threshold': threshold},
-    );
+    final args = <String, dynamic>{'threshold': threshold};
+    if (triggerKey != null) {
+      args['triggerKey'] = triggerKey;
+    }
+    await _methodChannel.invokeMethod<void>('start', args);
   }
 
   @override
@@ -61,6 +62,14 @@ class HotkeyServiceImpl implements HotkeyService {
     await _methodChannel.invokeMethod<void>(
       'setThreshold',
       <String, dynamic>{'threshold': milliseconds},
+    );
+  }
+
+  @override
+  Future<void> setTriggerKey(String key) async {
+    await _methodChannel.invokeMethod<void>(
+      'setTriggerKey',
+      <String, dynamic>{'key': key},
     );
   }
 }

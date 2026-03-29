@@ -4,6 +4,19 @@
 
 HotkeyChannel* HotkeyChannel::instance_ = nullptr;
 
+const std::unordered_map<std::string, DWORD> HotkeyChannel::key_map_ = {
+    {"left_alt", VK_LMENU},
+    {"right_alt", VK_RMENU},
+    {"left_option", VK_LMENU},
+    {"right_option", VK_RMENU},
+    {"left_control", VK_LCONTROL},
+    {"right_control", VK_RCONTROL},
+    {"left_shift", VK_LSHIFT},
+    {"right_shift", VK_RSHIFT},
+    {"left_command", VK_LWIN},
+    {"right_command", VK_RWIN},
+};
+
 HotkeyChannel::HotkeyChannel(flutter::BinaryMessenger* messenger)
     : method_channel_(messenger, "com.yap.hotkey",
                       &flutter::StandardMethodCodec::GetInstance()),
@@ -49,6 +62,10 @@ void HotkeyChannel::HandleMethodCall(
         if (it != args->end()) {
           threshold = std::get<int>(it->second);
         }
+        auto key_it = args->find(flutter::EncodableValue("triggerKey"));
+        if (key_it != args->end()) {
+          SetTriggerKey(std::get<std::string>(key_it->second));
+        }
       }
     }
     StartMonitoring(threshold);
@@ -68,8 +85,27 @@ void HotkeyChannel::HandleMethodCall(
       }
     }
     result->Success();
+  } else if (call.method_name() == "setTriggerKey") {
+    if (call.arguments()) {
+      const auto* args = std::get_if<flutter::EncodableMap>(call.arguments());
+      if (args) {
+        auto it = args->find(flutter::EncodableValue("key"));
+        if (it != args->end()) {
+          SetTriggerKey(std::get<std::string>(it->second));
+          state_ = TapState::idle;
+        }
+      }
+    }
+    result->Success();
   } else {
     result->NotImplemented();
+  }
+}
+
+void HotkeyChannel::SetTriggerKey(const std::string& key) {
+  auto it = key_map_.find(key);
+  if (it != key_map_.end()) {
+    trigger_vk_ = it->second;
   }
 }
 
@@ -94,19 +130,11 @@ LRESULT CALLBACK HotkeyChannel::LowLevelKeyboardProc(int nCode, WPARAM wParam,
   if (nCode == HC_ACTION && instance_) {
     auto* kbd = reinterpret_cast<KBDLLHOOKSTRUCT*>(lParam);
 
-    if (kbd->vkCode == VK_LMENU) {
+    if (kbd->vkCode == instance_->trigger_vk_) {
       auto now = std::chrono::steady_clock::now();
 
       bool is_down = (wParam == WM_KEYDOWN || wParam == WM_SYSKEYDOWN);
       bool is_up = (wParam == WM_KEYUP || wParam == WM_SYSKEYUP);
-
-      // State machine for double-tap detection:
-      //   idle -> first_down (on key down)
-      //   first_down -> first_up (on quick key up, must be < threshold)
-      //   first_up -> FIRE! (on second key down within threshold of first down)
-      //
-      // If the key is held down too long, reset to idle.
-      // This prevents triggering on hold or alt-tab style usage.
 
       switch (instance_->state_) {
         case TapState::idle:
@@ -118,16 +146,13 @@ LRESULT CALLBACK HotkeyChannel::LowLevelKeyboardProc(int nCode, WPARAM wParam,
 
         case TapState::first_down:
           if (is_up) {
-            // Key released — check it was a quick tap (not a hold)
             auto held_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
                                now - instance_->first_down_time_)
                                .count();
             if (held_ms < instance_->threshold_ms_) {
-              // Quick tap — advance to waiting for second tap
               instance_->first_up_time_ = now;
               instance_->state_ = TapState::first_up;
             } else {
-              // Held too long — was a hold, not a tap
               instance_->state_ = TapState::idle;
             }
           } else if (is_down) {
@@ -137,18 +162,15 @@ LRESULT CALLBACK HotkeyChannel::LowLevelKeyboardProc(int nCode, WPARAM wParam,
 
         case TapState::first_up:
           if (is_down) {
-            // Second tap down — check timing from first tap
             auto gap_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
                               now - instance_->first_up_time_)
                               .count();
             if (gap_ms <= instance_->threshold_ms_) {
-              // Double-tap detected!
               instance_->state_ = TapState::idle;
               if (instance_->event_sink_) {
                 instance_->event_sink_->Success(flutter::EncodableValue());
               }
             } else {
-              // Too slow — treat this as a new first tap
               instance_->first_down_time_ = now;
               instance_->state_ = TapState::first_down;
             }
@@ -157,7 +179,6 @@ LRESULT CALLBACK HotkeyChannel::LowLevelKeyboardProc(int nCode, WPARAM wParam,
       }
     } else {
       // A different key was pressed — reset the tap state.
-      // This prevents alt+key combos from triggering.
       if (instance_->state_ != TapState::idle) {
         instance_->state_ = TapState::idle;
       }

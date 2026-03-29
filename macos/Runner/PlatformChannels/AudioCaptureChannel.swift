@@ -209,12 +209,29 @@ class AudioCaptureChannel: NSObject, FlutterStreamHandler {
             return
         }
 
-        guard hasPermission() else {
-            result(FlutterError(
-                code: "NO_PERMISSION",
-                message: "Microphone permission not granted",
-                details: nil
-            ))
+        if !hasPermission() {
+            // Request permission and retry if granted.
+            if #available(macOS 10.14, *) {
+                AVCaptureDevice.requestAccess(for: .audio) { [weak self] granted in
+                    DispatchQueue.main.async {
+                        if granted {
+                            self?.startCapture(deviceId: deviceId, result: result)
+                        } else {
+                            result(FlutterError(
+                                code: "NO_PERMISSION",
+                                message: "Microphone permission not granted",
+                                details: nil
+                            ))
+                        }
+                    }
+                }
+            } else {
+                result(FlutterError(
+                    code: "NO_PERMISSION",
+                    message: "Microphone permission not granted",
+                    details: nil
+                ))
+            }
             return
         }
 

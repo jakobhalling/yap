@@ -10,13 +10,15 @@ class MockHotkeyService implements HotkeyService {
 
   bool isStarted = false;
   int threshold = 400;
+  String triggerKey = 'left_command';
 
   @override
   Stream<void> get onDoubleTap => _controller.stream;
 
   @override
-  Future<void> start() async {
+  Future<void> start({String? triggerKey}) async {
     isStarted = true;
+    if (triggerKey != null) this.triggerKey = triggerKey;
   }
 
   @override
@@ -28,6 +30,11 @@ class MockHotkeyService implements HotkeyService {
   Future<void> setDoubleTapThreshold(int milliseconds) async {
     assert(milliseconds >= 200 && milliseconds <= 600);
     threshold = milliseconds;
+  }
+
+  @override
+  Future<void> setTriggerKey(String key) async {
+    triggerKey = key;
   }
 
   /// Simulate a double-tap event for testing purposes.

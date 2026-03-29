@@ -1,7 +1,10 @@
+import 'dart:io' show Platform;
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:yap/features/settings/settings_providers.dart';
+import 'package:yap/features/settings/widgets/hotkey_recorder.dart';
 import 'package:yap/services/audio/audio_service.dart';
 import 'package:yap/services/providers.dart';
 
@@ -19,6 +22,7 @@ class _GeneralSectionState extends ConsumerState<GeneralSection> {
   bool _soundCues = true;
   bool _autoStart = false;
   bool _loading = true;
+  String _triggerKey = Platform.isMacOS ? 'left_command' : 'left_alt';
 
   // Microphone
   List<AudioDevice> _devices = [];
@@ -45,12 +49,14 @@ class _GeneralSectionState extends ConsumerState<GeneralSection> {
       final model = await settings.getClaudeModel();
       final sound = await settings.getSoundCuesEnabled();
       final auto = await settings.getAutoStartOnBoot();
+      final trigger = await settings.getTriggerKey();
       if (mounted) {
         setState(() {
           _doubleTapMs = tap.toDouble();
           _model = model;
           _soundCues = sound;
           _autoStart = auto;
+          _triggerKey = trigger;
           _loading = false;
         });
       }
@@ -82,6 +88,16 @@ class _GeneralSectionState extends ConsumerState<GeneralSection> {
     try {
       final settings = ref.read(settingsServiceProvider);
       await settings.setMicrophoneDeviceId(deviceId);
+    } catch (_) {}
+  }
+
+  Future<void> _setTriggerKey(String key) async {
+    setState(() => _triggerKey = key);
+    try {
+      final settings = ref.read(settingsServiceProvider);
+      await settings.setTriggerKey(key);
+      final hotkeyService = ref.read(hotkeyServiceProvider);
+      await hotkeyService.setTriggerKey(key);
     } catch (_) {}
   }
 
@@ -178,6 +194,23 @@ class _GeneralSectionState extends ConsumerState<GeneralSection> {
               },
             ),
           ],
+        ),
+        const SizedBox(height: 24),
+
+        // Trigger key
+        Text(
+          'Trigger shortcut',
+          style: Theme.of(context).textTheme.titleMedium,
+        ),
+        const SizedBox(height: 4),
+        Text(
+          'Double-tap this key to start/stop recording.',
+          style: Theme.of(context).textTheme.bodySmall,
+        ),
+        const SizedBox(height: 8),
+        HotkeyRecorder(
+          currentKey: _triggerKey,
+          onKeyChanged: _setTriggerKey,
         ),
         const SizedBox(height: 24),
 

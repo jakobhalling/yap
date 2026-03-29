@@ -9,6 +9,8 @@
 
 #include <chrono>
 #include <memory>
+#include <string>
+#include <unordered_map>
 
 class HotkeyChannel {
  public:
@@ -25,6 +27,7 @@ class HotkeyChannel {
 
   void StartMonitoring(int threshold_ms);
   void StopMonitoring();
+  void SetTriggerKey(const std::string& key);
 
   static LRESULT CALLBACK LowLevelKeyboardProc(int nCode, WPARAM wParam,
                                                  LPARAM lParam);
@@ -36,10 +39,12 @@ class HotkeyChannel {
   static HotkeyChannel* instance_;
   HHOOK hook_ = nullptr;
   int threshold_ms_ = 400;
+  DWORD trigger_vk_ = VK_LMENU;  // Configurable trigger key
+
+  // Map of key identifiers to VK codes
+  static const std::unordered_map<std::string, DWORD> key_map_;
 
   // State machine for double-tap detection.
-  // Requires: key down (quick) -> key up -> key down (within threshold).
-  // Rejects: holds, alt+key combos, slow taps.
   enum class TapState { idle, first_down, first_up };
   TapState state_ = TapState::idle;
   std::chrono::steady_clock::time_point first_down_time_;

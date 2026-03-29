@@ -3,7 +3,7 @@ import FlutterMacOS
 
 /// Handles the `com.yap.hotkey` platform channel.
 ///
-/// Uses CGEventTap to detect double-taps of Left Command (keycode 55).
+/// Uses CGEventTap to detect double-taps of a configurable modifier key.
 /// Requires accessibility permissions (AXIsProcessTrusted).
 class HotkeyChannel: NSObject, FlutterStreamHandler {
     private let methodChannel: FlutterMethodChannel
@@ -15,6 +15,25 @@ class HotkeyChannel: NSObject, FlutterStreamHandler {
 
     private var threshold: Int = 400 // milliseconds
     private var lastTapTime: UInt64 = 0
+
+    // Configurable trigger key (default: Left Command)
+    private var triggerKeyCode: UInt16 = 55
+    private var triggerFlagMask: CGEventFlags = .maskCommand
+
+    // Map of key identifiers to (keycode, flag mask)
+    private static let keyMap: [String: (UInt16, CGEventFlags)] = [
+        "left_command":  (55, .maskCommand),
+        "right_command": (54, .maskCommand),
+        "left_option":   (58, .maskAlternate),
+        "right_option":  (61, .maskAlternate),
+        "left_alt":      (58, .maskAlternate),
+        "right_alt":     (61, .maskAlternate),
+        "left_control":  (59, .maskControl),
+        "right_control": (62, .maskControl),
+        "left_shift":    (56, .maskShift),
+        "right_shift":   (60, .maskShift),
+        "fn":            (63, .maskSecondaryFn),
+    ]
 
     init(messenger: FlutterBinaryMessenger) {
         methodChannel = FlutterMethodChannel(
@@ -37,9 +56,13 @@ class HotkeyChannel: NSObject, FlutterStreamHandler {
     private func handleMethodCall(_ call: FlutterMethodCall, result: @escaping FlutterResult) {
         switch call.method {
         case "start":
-            if let args = call.arguments as? [String: Any],
-               let t = args["threshold"] as? Int {
-                threshold = t
+            if let args = call.arguments as? [String: Any] {
+                if let t = args["threshold"] as? Int {
+                    threshold = t
+                }
+                if let key = args["triggerKey"] as? String {
+                    applyTriggerKey(key)
+                }
             }
             startMonitoring(result: result)
 
@@ -54,8 +77,26 @@ class HotkeyChannel: NSObject, FlutterStreamHandler {
             }
             result(nil)
 
+        case "setTriggerKey":
+            if let args = call.arguments as? [String: Any],
+               let key = args["key"] as? String {
+                applyTriggerKey(key)
+                // Reset tap state when key changes
+                lastTapTime = 0
+            }
+            result(nil)
+
         default:
             result(FlutterMethodNotImplemented)
+        }
+    }
+
+    // MARK: - Trigger key configuration
+
+    private func applyTriggerKey(_ key: String) {
+        if let mapping = HotkeyChannel.keyMap[key] {
+            triggerKeyCode = mapping.0
+            triggerFlagMask = mapping.1
         }
     }
 
@@ -113,17 +154,16 @@ class HotkeyChannel: NSObject, FlutterStreamHandler {
         runLoopSource = nil
     }
 
-    /// Called from the C callback; checks for Left Command double-tap.
+    /// Called from the C callback; checks for configured modifier key double-tap.
     fileprivate func handleFlagsChanged(_ event: CGEvent) {
         let keyCode = event.getIntegerValueField(.keyboardEventKeycode)
-        // Left Command keycode is 55.
-        guard keyCode == 55 else { return }
+        guard keyCode == triggerKeyCode else { return }
 
         let flags = event.flags
-        let cmdDown = flags.contains(.maskCommand)
+        let keyDown = flags.contains(triggerFlagMask)
 
         // We only care about key-down (flag set).
-        guard cmdDown else { return }
+        guard keyDown else { return }
 
         let now = mach_absolute_time()
         let elapsed = machToMilliseconds(now - lastTapTime)

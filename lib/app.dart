@@ -66,11 +66,11 @@ class _AppState extends ConsumerState<App> {
     await windowManager.hide();
     await windowManager.setSkipTaskbar(true);
 
-    _initServices();
+    await _initServices();
     setState(() => _mode = AppMode.tray);
   }
 
-  void _initServices() {
+  Future<void> _initServices() async {
     final hotkeyService = ref.read(hotkeyServiceProvider);
     final pasteService = ref.read(pasteServiceProvider);
     final audioService = ref.read(audioServiceProvider);
@@ -93,7 +93,9 @@ class _AppState extends ConsumerState<App> {
     );
     _overlayController!.initialize();
 
-    hotkeyService.start();
+    // Load saved trigger key before starting hotkey monitoring
+    final triggerKey = await settingsService.getTriggerKey();
+    hotkeyService.start(triggerKey: triggerKey);
 
     _trayService = TrayService(recordingService: recordingService);
     _trayService!.onToggleRecording = () {

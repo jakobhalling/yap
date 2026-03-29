@@ -1,3 +1,5 @@
+import 'dart:io' show Platform;
+
 import '../../services/database/daos/settings_dao.dart';
 import '../../services/database/tables/settings_table.dart';
 
@@ -29,6 +31,9 @@ abstract class SettingsService {
 
   Future<String?> getMicrophoneDeviceId(); // Default: null (system default)
   Future<void> setMicrophoneDeviceId(String? deviceId);
+
+  Future<String> getTriggerKey(); // Default: platform-specific ('left_command' macOS, 'left_alt' Windows)
+  Future<void> setTriggerKey(String key);
 }
 
 /// Production implementation backed by the settings DAO (key-value store).
@@ -146,4 +151,17 @@ class SettingsServiceImpl implements SettingsService {
     }
     return _dao.set(SettingsKeys.microphoneDeviceId, deviceId);
   }
+
+  // --- Trigger Key ---
+
+  @override
+  Future<String> getTriggerKey() async {
+    final value = await _dao.get(SettingsKeys.triggerKey);
+    if (value != null) return value;
+    return Platform.isMacOS ? 'left_command' : 'left_alt';
+  }
+
+  @override
+  Future<void> setTriggerKey(String key) =>
+      _dao.set(SettingsKeys.triggerKey, key);
 }
