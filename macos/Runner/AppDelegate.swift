@@ -12,6 +12,10 @@ class AppDelegate: FlutterAppDelegate {
         return false
     }
 
+    override func applicationSupportsSecureRestorableState(_ app: NSApplication) -> Bool {
+        return true
+    }
+
     override func applicationDidFinishLaunching(_ notification: Notification) {
         guard let controller = mainFlutterWindow?.contentViewController as? FlutterViewController else {
             return
