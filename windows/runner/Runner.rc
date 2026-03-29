@@ -89,13 +89,13 @@ BEGIN
     BEGIN
         BLOCK "040904e4"
         BEGIN
-            VALUE "CompanyName", "com.yap" "\0"
-            VALUE "FileDescription", "yap" "\0"
+            VALUE "CompanyName", "Yap" "\0"
+            VALUE "FileDescription", "Yap - Voice-driven text input" "\0"
             VALUE "FileVersion", VERSION_AS_STRING "\0"
             VALUE "InternalName", "yap" "\0"
-            VALUE "LegalCopyright", "Copyright (C) 2026 com.yap. All rights reserved." "\0"
+            VALUE "LegalCopyright", "Copyright (C) 2026 Yap. All rights reserved." "\0"
             VALUE "OriginalFilename", "yap.exe" "\0"
-            VALUE "ProductName", "yap" "\0"
+            VALUE "ProductName", "Yap" "\0"
             VALUE "ProductVersion", VERSION_AS_STRING "\0"
         END
     END

@@ -7,6 +7,8 @@ import 'package:yap/features/settings/settings_providers.dart';
 import 'package:yap/features/settings/widgets/hotkey_recorder.dart';
 import 'package:yap/services/audio/audio_service.dart';
 import 'package:yap/services/providers.dart';
+import 'package:yap/services/update_service.dart';
+import 'package:yap/utils/constants.dart';
 
 /// General settings: microphone, double-tap speed, model selection, sound cues, auto-start.
 class GeneralSection extends ConsumerStatefulWidget {
@@ -28,6 +30,12 @@ class _GeneralSectionState extends ConsumerState<GeneralSection> {
   List<AudioDevice> _devices = [];
   String? _selectedDeviceId;
   bool _loadingDevices = true;
+
+  // Update state
+  bool _isCheckingForUpdate = false;
+  String? _updateVersion;
+  String? _updateDownloadUrl;
+  String? _updateReleaseUrl;
 
   static const _models = {
     'haiku': 'Claude Haiku',
@@ -132,6 +140,30 @@ class _GeneralSectionState extends ConsumerState<GeneralSection> {
       final settings = ref.read(settingsServiceProvider);
       await settings.setAutoStartOnBoot(value);
     } catch (_) {}
+  }
+
+  Future<void> _checkForUpdate() async {
+    if (_isCheckingForUpdate) return;
+    setState(() => _isCheckingForUpdate = true);
+    try {
+      final result = await UpdateService.checkForUpdate(appVersion);
+      if (result != null &&
+          result.latestVersion != null &&
+          UpdateService.isNewer(appVersion, result.latestVersion!)) {
+        setState(() {
+          _updateVersion = result.latestVersion;
+          _updateDownloadUrl = result.downloadUrl;
+          _updateReleaseUrl = result.releaseUrl;
+        });
+      } else {
+        setState(() {
+          _updateVersion = null;
+          _updateDownloadUrl = null;
+          _updateReleaseUrl = null;
+        });
+      }
+    } catch (_) {}
+    if (mounted) setState(() => _isCheckingForUpdate = false);
   }
 
   @override
@@ -265,6 +297,61 @@ class _GeneralSectionState extends ConsumerState<GeneralSection> {
           subtitle: const Text('Launch Yap automatically when you log in'),
           value: _autoStart,
           onChanged: _setAutoStart,
+        ),
+        const SizedBox(height: 24),
+
+        // Updates
+        Text('Updates', style: Theme.of(context).textTheme.titleMedium),
+        const SizedBox(height: 8),
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(
+              color: _updateVersion != null
+                  ? Colors.orange.withOpacity(0.5)
+                  : Theme.of(context).dividerColor,
+            ),
+          ),
+          child: Row(
+            children: [
+              Icon(
+                _updateVersion != null
+                    ? Icons.system_update
+                    : Icons.check_circle_outline,
+                size: 18,
+                color: _updateVersion != null ? Colors.orange : null,
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: _updateVersion != null
+                    ? Text(
+                        'Version $_updateVersion is available',
+                        style: TextStyle(color: Colors.orange),
+                      )
+                    : Text('You are up to date (v$appVersion)'),
+              ),
+              if (_updateVersion != null)
+                TextButton(
+                  onPressed: () {
+                    final url = _updateDownloadUrl ?? _updateReleaseUrl;
+                    if (url != null) UpdateService.openDownloadUrl(url);
+                  },
+                  child: const Text('Download'),
+                )
+              else
+                TextButton(
+                  onPressed: _isCheckingForUpdate ? null : _checkForUpdate,
+                  child: _isCheckingForUpdate
+                      ? const SizedBox(
+                          width: 14,
+                          height: 14,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Text('Check'),
+                ),
+            ],
+          ),
         ),
       ],
     );
