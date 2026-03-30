@@ -103,6 +103,9 @@ class HotkeyChannel: NSObject, FlutterStreamHandler {
     // MARK: - Monitoring
 
     private func startMonitoring(result: @escaping FlutterResult) {
+        // Clean up any existing tap first (e.g. hot restart).
+        stopMonitoring()
+
         // Check accessibility permission.
         let trusted = AXIsProcessTrusted()
         if !trusted {
@@ -117,12 +120,13 @@ class HotkeyChannel: NSObject, FlutterStreamHandler {
         }
 
         // Create event tap for flagsChanged (modifier keys).
+        // Also listen for tapDisabledByTimeout so we can re-enable if macOS disables the tap.
         let eventMask: CGEventMask = (1 << CGEventType.flagsChanged.rawValue)
 
         guard let tap = CGEvent.tapCreate(
             tap: .cgSessionEventTap,
             place: .headInsertEventTap,
-            options: .defaultTap,
+            options: .listenOnly,
             eventsOfInterest: eventMask,
             callback: hotkeyCallback,
             userInfo: Unmanaged.passUnretained(self).toOpaque()
@@ -152,6 +156,13 @@ class HotkeyChannel: NSObject, FlutterStreamHandler {
         }
         eventTap = nil
         runLoopSource = nil
+    }
+
+    /// Re-enables the event tap after macOS disables it (timeout or user input).
+    fileprivate func reEnableTap() {
+        if let tap = eventTap {
+            CGEvent.tapEnable(tap: tap, enable: true)
+        }
     }
 
     /// Called from the C callback; checks for configured modifier key double-tap.
@@ -208,8 +219,16 @@ private func hotkeyCallback(
     event: CGEvent,
     userInfo: UnsafeMutableRawPointer?
 ) -> Unmanaged<CGEvent>? {
-    guard let userInfo = userInfo else { return Unmanaged.passRetained(event) }
+    guard let userInfo = userInfo else { return Unmanaged.passUnretained(event) }
     let channel = Unmanaged<HotkeyChannel>.fromOpaque(userInfo).takeUnretainedValue()
+
+    // macOS disables event taps that take too long or under system pressure.
+    // Re-enable the tap when we receive the notification.
+    if type == .tapDisabledByTimeout || type == .tapDisabledByUserInput {
+        channel.reEnableTap()
+        return Unmanaged.passUnretained(event)
+    }
+
     channel.handleFlagsChanged(event)
-    return Unmanaged.passRetained(event)
+    return Unmanaged.passUnretained(event)
 }
