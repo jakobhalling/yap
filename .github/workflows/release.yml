@@ -1,4 +1,4 @@
-name: Build & Release Windows Installer
+name: Build & Release
 
 on:
   push:
@@ -9,9 +9,8 @@ permissions:
   contents: write
 
 jobs:
-  build:
+  build-windows:
     runs-on: windows-latest
-
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -31,14 +30,11 @@ jobs:
           echo "VERSION=$version" >> $env:GITHUB_OUTPUT
           Write-Host "Version: $version"
 
-          # Update pubspec.yaml
           (Get-Content pubspec.yaml) -replace 'version: .*', "version: $version+${{ github.run_number }}" | Set-Content pubspec.yaml
 
-          # Update Dart constants
           $constants = "lib/utils/constants.dart"
           (Get-Content $constants) -replace "const String appVersion = '.*';", "const String appVersion = '$version';" | Set-Content $constants
 
-          # Update Inno Setup script
           $issPath = "installer/yap.iss"
           (Get-Content $issPath) -replace '#define MyAppVersion ".*"', "#define MyAppVersion `"$version`"" | Set-Content $issPath
 
@@ -54,23 +50,72 @@ jobs:
       - name: Build installer
         run: iscc installer/yap.iss
 
-      - name: Upload installer artifact
+      - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: windows-installer
           path: build/installer/*.exe
 
+  build-macos:
+    runs-on: macos-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Set version from tag
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          echo "VERSION=$VERSION" >> $GITHUB_ENV
+
+          sed -i '' "s/version: .*/version: $VERSION+${{ github.run_number }}/" pubspec.yaml
+          sed -i '' "s/const String appVersion = '.*';/const String appVersion = '$VERSION';/" lib/utils/constants.dart
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Build macOS release
+        run: flutter build macos --release
+
+      - name: Create DMG
+        run: |
+          APP_PATH="build/macos/Build/Products/Release/yap.app"
+          DMG_NAME="Yap-${VERSION}-macOS.dmg"
+          mkdir -p build/macos/dmg
+          hdiutil create -volname "Yap" -srcfolder "$APP_PATH" -ov -format UDZO "build/macos/dmg/$DMG_NAME"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: macos-dmg
+          path: build/macos/dmg/*.dmg
+
+  release:
+    needs: [build-windows, build-macos]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          files: build/installer/*.exe
+          files: |
+            artifacts/windows-installer/*.exe
+            artifacts/macos-dmg/*.dmg
           generate_release_notes: true
           draft: false
           prerelease: ${{ contains(github.ref_name, '-') }}
 
       - name: Discord notification (success)
         if: success()
-        shell: bash
         env:
           DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK_URL }}
           REPO: ${{ github.repository }}
@@ -91,16 +136,15 @@ jobs:
                 {\"name\": \"Version\", \"value\": \"[${REF}](${RELEASE_URL})\", \"inline\": true},
                 {\"name\": \"Commit\", \"value\": \"[\`${SHORT_SHA}\`](${COMMIT_URL})\", \"inline\": true},
                 {\"name\": \"Triggered by\", \"value\": \"${ACTOR}\", \"inline\": true},
-                {\"name\": \"Artifact\", \"value\": \"Windows Installer (.exe)\", \"inline\": true},
+                {\"name\": \"Artifacts\", \"value\": \"Windows Installer (.exe) + macOS DMG (.dmg)\", \"inline\": true},
                 {\"name\": \"Links\", \"value\": \"[Build Log](${RUN_URL}) | [Release](${RELEASE_URL})\", \"inline\": false}
               ],
-              \"footer\": {\"text\": \"Yap \u2022 Build & Release Windows Installer\"}
+              \"footer\": {\"text\": \"Yap \u2022 Build & Release\"}
             }]
           }" "$DISCORD_WEBHOOK"
 
       - name: Discord notification (failure)
         if: failure()
-        shell: bash
         env:
           DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK_URL }}
           REPO: ${{ github.repository }}
@@ -122,6 +166,6 @@ jobs:
                 {\"name\": \"Triggered by\", \"value\": \"${ACTOR}\", \"inline\": true},
                 {\"name\": \"Links\", \"value\": \"[Build Log](${RUN_URL})\", \"inline\": false}
               ],
-              \"footer\": {\"text\": \"Yap \u2022 Build & Release Windows Installer\"}
+              \"footer\": {\"text\": \"Yap \u2022 Build & Release\"}
             }]
           }" "$DISCORD_WEBHOOK"

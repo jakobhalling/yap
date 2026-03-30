@@ -48,12 +48,17 @@ class UpdateService {
       final releaseUrl = json['html_url'] as String?;
       final releaseNotes = json['body'] as String?;
 
-      // Find the Windows installer asset
+      // Find the platform-appropriate asset
       String? downloadUrl;
       final assets = json['assets'] as List<dynamic>? ?? [];
       for (final asset in assets) {
         final name = (asset['name'] as String? ?? '').toLowerCase();
-        if (name.endsWith('-setup.exe') || name.endsWith('-installer.exe')) {
+        if (Platform.isMacOS && name.endsWith('.dmg')) {
+          downloadUrl = asset['browser_download_url'] as String?;
+          break;
+        } else if (Platform.isWindows &&
+            (name.endsWith('-setup.exe') ||
+                name.endsWith('-installer.exe'))) {
           downloadUrl = asset['browser_download_url'] as String?;
           break;
         }
