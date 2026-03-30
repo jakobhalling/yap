@@ -20,7 +20,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen>
     with SingleTickerProviderStateMixin {
   late final TabController _tabController;
 
-  static const _tabs = ['API Keys', 'Profiles', 'General', 'History'];
+  static const _tabs = ['General', 'API Keys', 'Profiles', 'History'];
 
   @override
   void initState() {
@@ -46,9 +46,9 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen>
           child: TabBarView(
             controller: _tabController,
             children: const [
+              GeneralSection(),
               ApiKeysSection(),
               ProfilesSection(),
-              GeneralSection(),
               HistorySection(),
             ],
           ),

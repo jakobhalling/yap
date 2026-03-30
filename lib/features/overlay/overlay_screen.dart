@@ -90,6 +90,11 @@ class _OverlayScreenState extends ConsumerState<OverlayScreen> {
     _ctrl.handleKey(event.logicalKey, isAltPressed: event.isAltPressed);
   }
 
+  void _onSizeChanged(Size size) {
+    // Add a small buffer for the window chrome/shadow.
+    _ctrl.overlayWindow.updateSize(size.height + 16);
+  }
+
   @override
   Widget build(BuildContext context) {
     if (_state.phase == OverlayPhase.hidden) return const SizedBox.shrink();
@@ -100,21 +105,24 @@ class _OverlayScreenState extends ConsumerState<OverlayScreen> {
       onKey: _onKey,
       child: Material(
         color: Colors.transparent,
-        child: Container(
-          decoration: BoxDecoration(
-            color: const Color(0xFF0A0A0A),
-            borderRadius: BorderRadius.circular(8),
-            border: Border.all(color: Colors.white.withValues(alpha: 0.06)),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withValues(alpha: 0.5),
-                blurRadius: 24,
-                offset: const Offset(0, 8),
-              ),
-            ],
+        child: _MeasureSize(
+          onChange: _onSizeChanged,
+          child: Container(
+            decoration: BoxDecoration(
+              color: const Color(0xFF0A0A0A),
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(color: Colors.white.withValues(alpha: 0.06)),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.5),
+                  blurRadius: 24,
+                  offset: const Offset(0, 8),
+                ),
+              ],
+            ),
+            clipBehavior: Clip.antiAlias,
+            child: _buildBody(),
           ),
-          clipBehavior: Clip.antiAlias,
-          child: _buildBody(),
         ),
       ),
     );
@@ -481,5 +489,51 @@ class _OverlayScreenState extends ConsumerState<OverlayScreen> {
         color: Colors.white.withValues(alpha: 0.4),
       ),
     );
+  }
+}
+
+// ─── Size measurement widget ────────────────────────────────────────────────
+
+class _MeasureSize extends StatefulWidget {
+  final ValueChanged<Size> onChange;
+  final Widget child;
+
+  const _MeasureSize({required this.onChange, required this.child});
+
+  @override
+  State<_MeasureSize> createState() => _MeasureSizeState();
+}
+
+class _MeasureSizeState extends State<_MeasureSize> {
+  final _key = GlobalKey();
+  Size _oldSize = Size.zero;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) => _checkSize());
+  }
+
+  @override
+  void didUpdateWidget(_MeasureSize oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    WidgetsBinding.instance.addPostFrameCallback((_) => _checkSize());
+  }
+
+  void _checkSize() {
+    final context = _key.currentContext;
+    if (context == null) return;
+    final box = context.findRenderObject() as RenderBox?;
+    if (box == null || !box.hasSize) return;
+    final newSize = box.size;
+    if (newSize != _oldSize) {
+      _oldSize = newSize;
+      widget.onChange(newSize);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(key: _key, child: widget.child);
   }
 }

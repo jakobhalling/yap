@@ -10,7 +10,7 @@ import 'package:window_manager/window_manager.dart';
 /// alive and simply shown/hidden as needed.
 class OverlayWindow {
   static const double _overlayWidth = 600;
-  static const double _minHeight = 180;
+  static const double _minHeight = 120;
   static const double _maxHeightFraction = 0.6;
 
   bool _isVisible = false;
@@ -30,14 +30,22 @@ class OverlayWindow {
 
     _currentHeight = _minHeight;
 
-    await windowManager.setPosition(Offset(left, top));
-    await windowManager.setSize(Size(_overlayWidth, _currentHeight));
-    await windowManager.setAlwaysOnTop(true);
-    await windowManager.setSkipTaskbar(true);
+    // Configure window properties before showing.
     await windowManager.setTitleBarStyle(TitleBarStyle.hidden);
     await windowManager.setAsFrameless();
+    await windowManager.setSkipTaskbar(true);
     await windowManager.setOpacity(1.0);
+    await windowManager.setPosition(Offset(left, top));
+    await windowManager.setSize(Size(_overlayWidth, _currentHeight));
+
+    // Show first, then force always-on-top and focus.
+    // On macOS, tray-only apps need show → alwaysOnTop → focus in this order
+    // to reliably appear above other windows.
     await windowManager.show();
+    await windowManager.setAlwaysOnTop(true);
+    await windowManager.focus();
+    // Re-focus after a short delay to handle macOS activation quirks.
+    await Future.delayed(const Duration(milliseconds: 50));
     await windowManager.focus();
 
     _isVisible = true;
