@@ -70,6 +70,7 @@ jobs:
 
       - name: Discord notification (success)
         if: success()
+        shell: bash
         env:
           DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK_URL }}
           REPO: ${{ github.repository }}
@@ -82,6 +83,7 @@ jobs:
 
       - name: Discord notification (failure)
         if: failure()
+        shell: bash
         env:
           DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK_URL }}
           REPO: ${{ github.repository }}
