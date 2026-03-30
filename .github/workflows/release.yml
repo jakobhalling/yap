@@ -75,11 +75,28 @@ jobs:
           DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK_URL }}
           REPO: ${{ github.repository }}
           REF: ${{ github.ref_name }}
+          SHA: ${{ github.sha }}
+          ACTOR: ${{ github.actor }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          RELEASE_URL: ${{ github.server_url }}/${{ github.repository }}/releases/tag/${{ github.ref_name }}
+          COMMIT_URL: ${{ github.server_url }}/${{ github.repository }}/commit/${{ github.sha }}
         run: |
-          curl -H "Content-Type: application/json" \
-            -d "{\"embeds\":[{\"title\":\"Build Succeeded\",\"description\":\"**${REPO}** ${REF} built successfully.\",\"color\":3066993,\"url\":\"${RUN_URL}\"}]}" \
-            "$DISCORD_WEBHOOK"
+          SHORT_SHA="${SHA:0:7}"
+          curl -H "Content-Type: application/json" -d "{
+            \"embeds\": [{
+              \"title\": \"Build Succeeded\",
+              \"description\": \"**${REPO}** released **${REF}** successfully.\",
+              \"color\": 3066993,
+              \"fields\": [
+                {\"name\": \"Version\", \"value\": \"[${REF}](${RELEASE_URL})\", \"inline\": true},
+                {\"name\": \"Commit\", \"value\": \"[\`${SHORT_SHA}\`](${COMMIT_URL})\", \"inline\": true},
+                {\"name\": \"Triggered by\", \"value\": \"${ACTOR}\", \"inline\": true},
+                {\"name\": \"Artifact\", \"value\": \"Windows Installer (.exe)\", \"inline\": true},
+                {\"name\": \"Links\", \"value\": \"[Build Log](${RUN_URL}) | [Release](${RELEASE_URL})\", \"inline\": false}
+              ],
+              \"footer\": {\"text\": \"Yap \u2022 Build & Release Windows Installer\"}
+            }]
+          }" "$DISCORD_WEBHOOK"
 
       - name: Discord notification (failure)
         if: failure()
@@ -88,8 +105,23 @@ jobs:
           DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK_URL }}
           REPO: ${{ github.repository }}
           REF: ${{ github.ref_name }}
+          SHA: ${{ github.sha }}
+          ACTOR: ${{ github.actor }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          COMMIT_URL: ${{ github.server_url }}/${{ github.repository }}/commit/${{ github.sha }}
         run: |
-          curl -H "Content-Type: application/json" \
-            -d "{\"embeds\":[{\"title\":\"Build Failed\",\"description\":\"**${REPO}** ${REF} build failed.\",\"color\":15158332,\"url\":\"${RUN_URL}\"}]}" \
-            "$DISCORD_WEBHOOK"
+          SHORT_SHA="${SHA:0:7}"
+          curl -H "Content-Type: application/json" -d "{
+            \"embeds\": [{
+              \"title\": \"Build Failed\",
+              \"description\": \"**${REPO}** failed to build **${REF}**.\",
+              \"color\": 15158332,
+              \"fields\": [
+                {\"name\": \"Version\", \"value\": \"${REF}\", \"inline\": true},
+                {\"name\": \"Commit\", \"value\": \"[\`${SHORT_SHA}\`](${COMMIT_URL})\", \"inline\": true},
+                {\"name\": \"Triggered by\", \"value\": \"${ACTOR}\", \"inline\": true},
+                {\"name\": \"Links\", \"value\": \"[Build Log](${RUN_URL})\", \"inline\": false}
+              ],
+              \"footer\": {\"text\": \"Yap \u2022 Build & Release Windows Installer\"}
+            }]
+          }" "$DISCORD_WEBHOOK"
