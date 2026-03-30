@@ -6,6 +6,7 @@ import 'hotkey/hotkey_service.dart';
 import 'hotkey/hotkey_service_impl.dart';
 import 'paste/paste_service.dart';
 import 'paste/paste_service_impl.dart';
+import 'update_service.dart';
 
 /// Provider for the global hotkey detection service.
 final hotkeyServiceProvider = Provider<HotkeyService>((ref) {
@@ -22,4 +23,11 @@ final audioServiceProvider = Provider<AudioService>((ref) {
 /// Provider for the paste simulation service.
 final pasteServiceProvider = Provider<PasteService>((ref) {
   return PasteServiceImpl();
+});
+
+/// Provider for the auto-update service.
+final updateServiceProvider = Provider<UpdateService>((ref) {
+  final service = UpdateService();
+  ref.onDispose(() => service.dispose());
+  return service;
 });

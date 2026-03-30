@@ -109,6 +109,7 @@ class HotkeyChannel: NSObject, FlutterStreamHandler {
         // Check accessibility permission.
         let trusted = AXIsProcessTrusted()
         if !trusted {
+            NSLog("[Yap] Accessibility not granted — prompting user")
             let options = [kAXTrustedCheckOptionPrompt.takeRetainedValue(): true] as CFDictionary
             AXIsProcessTrustedWithOptions(options)
             result(FlutterError(
@@ -119,32 +120,46 @@ class HotkeyChannel: NSObject, FlutterStreamHandler {
             return
         }
 
-        // Create event tap for flagsChanged (modifier keys).
-        // Also listen for tapDisabledByTimeout so we can re-enable if macOS disables the tap.
+        NSLog("[Yap] Accessibility granted, creating event tap...")
+        attemptCreateTap(retries: 3, delay: 0.5, result: result)
+    }
+
+    /// Attempts to create the CGEventTap, retrying on failure.
+    /// After a Flutter rebuild the binary changes and macOS may briefly
+    /// refuse the tap even though AXIsProcessTrusted() returns true.
+    private func attemptCreateTap(retries: Int, delay: TimeInterval, result: @escaping FlutterResult) {
         let eventMask: CGEventMask = (1 << CGEventType.flagsChanged.rawValue)
 
-        guard let tap = CGEvent.tapCreate(
+        if let tap = CGEvent.tapCreate(
             tap: .cgSessionEventTap,
             place: .headInsertEventTap,
             options: .listenOnly,
             eventsOfInterest: eventMask,
             callback: hotkeyCallback,
             userInfo: Unmanaged.passUnretained(self).toOpaque()
-        ) else {
-            result(FlutterError(
-                code: "TAP_FAILED",
-                message: "Could not create CGEventTap",
-                details: nil
-            ))
+        ) {
+            eventTap = tap
+            runLoopSource = CFMachPortCreateRunLoopSource(kCFAllocatorDefault, tap, 0)
+            CFRunLoopAddSource(CFRunLoopGetMain(), runLoopSource, .commonModes)
+            CGEvent.tapEnable(tap: tap, enable: true)
+            NSLog("[Yap] Event tap created successfully")
+            result(nil)
             return
         }
 
-        eventTap = tap
-        runLoopSource = CFMachPortCreateRunLoopSource(kCFAllocatorDefault, tap, 0)
-        CFRunLoopAddSource(CFRunLoopGetMain(), runLoopSource, .commonModes)
-        CGEvent.tapEnable(tap: tap, enable: true)
-
-        result(nil)
+        if retries > 0 {
+            NSLog("[Yap] CGEventTap creation failed, retrying in \(delay)s (\(retries) retries left)")
+            DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in
+                self?.attemptCreateTap(retries: retries - 1, delay: delay, result: result)
+            }
+        } else {
+            NSLog("[Yap] CGEventTap creation failed after all retries")
+            result(FlutterError(
+                code: "TAP_FAILED",
+                message: "Could not create CGEventTap. Try removing and re-adding the app in System Settings > Privacy & Security > Accessibility.",
+                details: nil
+            ))
+        }
     }
 
     private func stopMonitoring() {

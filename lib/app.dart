@@ -15,6 +15,7 @@ import 'features/settings/settings_screen.dart';
 import 'features/setup/setup_screen.dart';
 import 'services/providers.dart';
 import 'shared/theme/app_theme.dart';
+import 'utils/constants.dart';
 
 enum AppMode { loading, setup, tray }
 
@@ -95,7 +96,12 @@ class _AppState extends ConsumerState<App> {
 
     // Load saved trigger key before starting hotkey monitoring
     final triggerKey = await settingsService.getTriggerKey();
-    hotkeyService.start(triggerKey: triggerKey);
+    try {
+      await hotkeyService.start(triggerKey: triggerKey);
+    } catch (e) {
+      debugPrint('[Yap] Hotkey start failed: $e');
+      debugPrint('[Yap] You may need to re-grant Accessibility permission after a rebuild.');
+    }
 
     _trayService = TrayService(recordingService: recordingService);
     _trayService!.onToggleRecording = () {
@@ -108,6 +114,10 @@ class _AppState extends ConsumerState<App> {
     _overlayController!.stateStream.listen((state) {
       _trayService!.setRecording(state.phase == OverlayPhase.recording);
     });
+
+    // Check for updates in background after startup.
+    final updateService = ref.read(updateServiceProvider);
+    updateService.checkForUpdate(appVersion);
   }
 
   /// Open settings or history in the main window (temporarily visible).

@@ -10,6 +10,8 @@ import 'package:yap/services/providers.dart';
 import 'package:yap/services/update_service.dart';
 import 'package:yap/utils/constants.dart';
 
+import 'dart:async';
+
 /// General settings: microphone, double-tap speed, model selection, sound cues, auto-start.
 class GeneralSection extends ConsumerStatefulWidget {
   const GeneralSection({super.key});
@@ -32,10 +34,8 @@ class _GeneralSectionState extends ConsumerState<GeneralSection> {
   bool _loadingDevices = true;
 
   // Update state
-  bool _isCheckingForUpdate = false;
-  String? _updateVersion;
-  String? _updateDownloadUrl;
-  String? _updateReleaseUrl;
+  UpdateState _updateState = const UpdateState();
+  StreamSubscription<UpdateState>? _updateSub;
 
   static const _models = {
     'haiku': 'Claude Haiku',
@@ -48,6 +48,21 @@ class _GeneralSectionState extends ConsumerState<GeneralSection> {
     super.initState();
     _load();
     _loadDevices();
+    _initUpdateListener();
+  }
+
+  @override
+  void dispose() {
+    _updateSub?.cancel();
+    super.dispose();
+  }
+
+  void _initUpdateListener() {
+    final updateService = ref.read(updateServiceProvider);
+    _updateState = updateService.state;
+    _updateSub = updateService.stateStream.listen((state) {
+      if (mounted) setState(() => _updateState = state);
+    });
   }
 
   Future<void> _load() async {
@@ -143,27 +158,18 @@ class _GeneralSectionState extends ConsumerState<GeneralSection> {
   }
 
   Future<void> _checkForUpdate() async {
-    if (_isCheckingForUpdate) return;
-    setState(() => _isCheckingForUpdate = true);
-    try {
-      final result = await UpdateService.checkForUpdate(appVersion);
-      if (result != null &&
-          result.latestVersion != null &&
-          UpdateService.isNewer(appVersion, result.latestVersion!)) {
-        setState(() {
-          _updateVersion = result.latestVersion;
-          _updateDownloadUrl = result.downloadUrl;
-          _updateReleaseUrl = result.releaseUrl;
-        });
-      } else {
-        setState(() {
-          _updateVersion = null;
-          _updateDownloadUrl = null;
-          _updateReleaseUrl = null;
-        });
-      }
-    } catch (_) {}
-    if (mounted) setState(() => _isCheckingForUpdate = false);
+    final updateService = ref.read(updateServiceProvider);
+    await updateService.checkForUpdate(appVersion);
+  }
+
+  Future<void> _downloadUpdate() async {
+    final updateService = ref.read(updateServiceProvider);
+    await updateService.downloadUpdate();
+  }
+
+  Future<void> _installUpdate() async {
+    final updateService = ref.read(updateServiceProvider);
+    await updateService.installAndRestart();
   }
 
   @override
@@ -303,57 +309,160 @@ class _GeneralSectionState extends ConsumerState<GeneralSection> {
         // Updates
         Text('Updates', style: Theme.of(context).textTheme.titleMedium),
         const SizedBox(height: 8),
-        Container(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(8),
-            border: Border.all(
-              color: _updateVersion != null
-                  ? Colors.orange.withOpacity(0.5)
-                  : Theme.of(context).dividerColor,
-            ),
-          ),
-          child: Row(
-            children: [
-              Icon(
-                _updateVersion != null
-                    ? Icons.system_update
-                    : Icons.check_circle_outline,
-                size: 18,
-                color: _updateVersion != null ? Colors.orange : null,
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: _updateVersion != null
-                    ? Text(
-                        'Version $_updateVersion is available',
-                        style: TextStyle(color: Colors.orange),
-                      )
-                    : Text('You are up to date (v$appVersion)'),
-              ),
-              if (_updateVersion != null)
-                TextButton(
-                  onPressed: () {
-                    final url = _updateDownloadUrl ?? _updateReleaseUrl;
-                    if (url != null) UpdateService.openDownloadUrl(url);
-                  },
-                  child: const Text('Download'),
-                )
-              else
-                TextButton(
-                  onPressed: _isCheckingForUpdate ? null : _checkForUpdate,
-                  child: _isCheckingForUpdate
-                      ? const SizedBox(
-                          width: 14,
-                          height: 14,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        )
-                      : const Text('Check'),
-                ),
-            ],
-          ),
-        ),
+        _buildUpdateCard(context),
       ],
     );
+  }
+
+  Widget _buildUpdateCard(BuildContext context) {
+    final status = _updateState.status;
+    final isActionable = status == UpdateStatus.updateAvailable ||
+        status == UpdateStatus.readyToInstall;
+    final isError = status == UpdateStatus.error;
+    final isDownloading = status == UpdateStatus.downloading;
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(
+          color: isActionable
+              ? Colors.orange.withOpacity(0.5)
+              : isError
+                  ? Colors.red.withOpacity(0.5)
+                  : Theme.of(context).dividerColor,
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(
+                _updateIcon,
+                size: 18,
+                color: _updateIconColor,
+              ),
+              const SizedBox(width: 8),
+              Expanded(child: Text(_updateLabel)),
+              _buildUpdateAction(),
+            ],
+          ),
+          if (isDownloading) ...[
+            const SizedBox(height: 8),
+            LinearProgressIndicator(
+              value: _updateState.downloadProgress > 0
+                  ? _updateState.downloadProgress
+                  : null,
+            ),
+            const SizedBox(height: 4),
+            Text(
+              '${(_updateState.downloadProgress * 100).toStringAsFixed(0)}%',
+              style: Theme.of(context).textTheme.bodySmall,
+            ),
+          ],
+          if (isError && _updateState.error != null) ...[
+            const SizedBox(height: 4),
+            Text(
+              _updateState.error!,
+              style: Theme.of(context)
+                  .textTheme
+                  .bodySmall
+                  ?.copyWith(color: Colors.red),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  IconData get _updateIcon {
+    switch (_updateState.status) {
+      case UpdateStatus.idle:
+      case UpdateStatus.upToDate:
+        return Icons.check_circle_outline;
+      case UpdateStatus.checking:
+        return Icons.sync;
+      case UpdateStatus.updateAvailable:
+        return Icons.system_update;
+      case UpdateStatus.downloading:
+        return Icons.downloading;
+      case UpdateStatus.readyToInstall:
+        return Icons.install_desktop;
+      case UpdateStatus.installing:
+        return Icons.install_desktop;
+      case UpdateStatus.error:
+        return Icons.error_outline;
+    }
+  }
+
+  Color? get _updateIconColor {
+    switch (_updateState.status) {
+      case UpdateStatus.updateAvailable:
+      case UpdateStatus.downloading:
+        return Colors.orange;
+      case UpdateStatus.readyToInstall:
+        return Colors.green;
+      case UpdateStatus.error:
+        return Colors.red;
+      default:
+        return null;
+    }
+  }
+
+  String get _updateLabel {
+    switch (_updateState.status) {
+      case UpdateStatus.idle:
+      case UpdateStatus.upToDate:
+        return 'You are up to date (v$appVersion)';
+      case UpdateStatus.checking:
+        return 'Checking for updates...';
+      case UpdateStatus.updateAvailable:
+        return 'Version ${_updateState.availableVersion} is available';
+      case UpdateStatus.downloading:
+        return 'Downloading update...';
+      case UpdateStatus.readyToInstall:
+        return 'Version ${_updateState.availableVersion} ready to install';
+      case UpdateStatus.installing:
+        return 'Installing...';
+      case UpdateStatus.error:
+        return 'Update failed';
+    }
+  }
+
+  Widget _buildUpdateAction() {
+    switch (_updateState.status) {
+      case UpdateStatus.idle:
+      case UpdateStatus.upToDate:
+      case UpdateStatus.error:
+        return TextButton(
+          onPressed: _checkForUpdate,
+          child: const Text('Check'),
+        );
+      case UpdateStatus.checking:
+        return const SizedBox(
+          width: 14,
+          height: 14,
+          child: CircularProgressIndicator(strokeWidth: 2),
+        );
+      case UpdateStatus.updateAvailable:
+        return TextButton(
+          onPressed: _downloadUpdate,
+          child: const Text('Download'),
+        );
+      case UpdateStatus.downloading:
+        return const SizedBox.shrink();
+      case UpdateStatus.readyToInstall:
+        return FilledButton(
+          onPressed: _installUpdate,
+          child: const Text('Install & Restart'),
+        );
+      case UpdateStatus.installing:
+        return const SizedBox(
+          width: 14,
+          height: 14,
+          child: CircularProgressIndicator(strokeWidth: 2),
+        );
+    }
   }
 }
