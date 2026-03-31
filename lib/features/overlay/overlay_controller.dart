@@ -199,6 +199,11 @@ class OverlayController {
       await _startRecording();
     } else if (_state.phase == OverlayPhase.recording) {
       await _stopRecording();
+    } else {
+      // Any other phase (transcriptComplete, processing, readyToPaste, etc.)
+      // — cancel current state and start a new recording.
+      cancel();
+      await _startRecording();
     }
   }
 
