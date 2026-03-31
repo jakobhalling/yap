@@ -1,18 +1,23 @@
 UNAME := $(shell uname -s)
 
-.PHONY: release-and-run build-release run-release clean
+.PHONY: help release-and-run build-release run-release clean
 
-release-and-run: build-release run-release
+.DEFAULT_GOAL := help
+
+help: ## Show this help message
+	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-20s\033[0m %s\n", $$1, $$2}'
+
+release-and-run: build-release run-release ## Build release and run the app
 
 ifeq ($(UNAME),Darwin)
 
-build-release:
+build-release: ## Build the app in release mode
 	flutter build macos --release
 
-run-release:
+run-release: ## Run the release build
 	open build/macos/Build/Products/Release/yap.app
 
-clean:
+clean: ## Clean build artifacts
 	flutter clean
 
 else ifeq ($(OS),Windows_NT)
