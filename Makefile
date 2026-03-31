@@ -1,6 +1,6 @@
 UNAME := $(shell uname -s)
 
-.PHONY: help release-and-run build-release run-release clean
+.PHONY: help release-and-run build-release run-release clean dmg
 
 .DEFAULT_GOAL := help
 
@@ -16,6 +16,9 @@ build-release: ## Build the app in release mode
 
 run-release: ## Run the release build
 	open build/macos/Build/Products/Release/yap.app
+
+dmg: build-release ## Build release and create DMG installer
+	./installer/create_dmg.sh
 
 clean: ## Clean build artifacts
 	flutter clean

@@ -83,11 +83,7 @@ jobs:
         run: flutter build macos --release
 
       - name: Create DMG
-        run: |
-          APP_PATH="build/macos/Build/Products/Release/yap.app"
-          DMG_NAME="Yap-${VERSION}-macOS.dmg"
-          mkdir -p build/macos/dmg
-          hdiutil create -volname "Yap" -srcfolder "$APP_PATH" -ov -format UDZO "build/macos/dmg/$DMG_NAME"
+        run: ./installer/create_dmg.sh "$VERSION"
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
