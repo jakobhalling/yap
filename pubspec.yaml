@@ -22,7 +22,6 @@ dependencies:
   window_manager: ^0.3.7
   screen_retriever: ^0.1.9
   system_tray: ^2.0.3
-  audioplayers: ^5.2.0
   shared_preferences: ^2.2.0
   google_fonts: ^6.1.0
 
@@ -38,5 +37,4 @@ flutter:
   uses-material-design: true
 
   assets:
-    - assets/sounds/
     - assets/icons/

@@ -3,7 +3,6 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:audioplayers/audioplayers.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 import 'package:yap/features/overlay/overlay_controller.dart';
@@ -43,8 +42,8 @@ class OverlayScreen extends ConsumerStatefulWidget {
 class _OverlayScreenState extends ConsumerState<OverlayScreen> {
   late final FocusNode _focusNode;
   late final StreamSubscription<YapOverlayState> _sub;
+  static const _soundChannel = MethodChannel('com.yap.sound');
   YapOverlayState _state = const YapOverlayState();
-  final AudioPlayer _audioPlayer = AudioPlayer();
   OverlayPhase? _previousPhase;
 
   OverlayController get _ctrl => widget.controller;
@@ -61,9 +60,9 @@ class _OverlayScreenState extends ConsumerState<OverlayScreen> {
     final prev = _previousPhase;
     _previousPhase = s.phase;
     if (prev == OverlayPhase.hidden && s.phase == OverlayPhase.recording) {
-      _playSound('assets/sounds/record_start.wav');
+      _playSound('playStartSound');
     } else if (prev == OverlayPhase.recording && s.phase != OverlayPhase.recording) {
-      _playSound('assets/sounds/record_stop.wav');
+      _playSound('playStopSound');
     }
     if (mounted) {
       setState(() => _state = s);
@@ -71,9 +70,9 @@ class _OverlayScreenState extends ConsumerState<OverlayScreen> {
     }
   }
 
-  Future<void> _playSound(String path) async {
+  Future<void> _playSound(String method) async {
     try {
-      await _audioPlayer.play(AssetSource(path.replaceFirst('assets/', '')));
+      await _soundChannel.invokeMethod(method);
     } catch (_) {}
   }
 
@@ -81,7 +80,6 @@ class _OverlayScreenState extends ConsumerState<OverlayScreen> {
   void dispose() {
     _sub.cancel();
     _focusNode.dispose();
-    _audioPlayer.dispose();
     super.dispose();
   }
 

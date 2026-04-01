@@ -6,6 +6,7 @@
 #include "audio_capture_channel.h"
 #include "hotkey_channel.h"
 #include "paste_channel.h"
+#include "sound_channel.h"
 
 /// Register all Yap platform channels with the Flutter engine.
 ///
@@ -16,10 +17,12 @@ inline void RegisterPlatformChannels(flutter::FlutterEngine* engine) {
   static std::unique_ptr<HotkeyChannel> hotkey_channel;
   static std::unique_ptr<AudioCaptureChannel> audio_capture_channel;
   static std::unique_ptr<PasteChannel> paste_channel;
+  static std::unique_ptr<SoundChannel> sound_channel;
 
   hotkey_channel = std::make_unique<HotkeyChannel>(messenger);
   audio_capture_channel = std::make_unique<AudioCaptureChannel>(messenger);
   paste_channel = std::make_unique<PasteChannel>(messenger);
+  sound_channel = std::make_unique<SoundChannel>(messenger);
 }
 
 #endif  // RUNNER_PLATFORM_CHANNELS_PLATFORM_CHANNELS_H_

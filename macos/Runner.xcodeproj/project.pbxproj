@@ -32,6 +32,7 @@
 		AA000001AABBCCDD00000001 /* HotkeyChannel.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA000002AABBCCDD00000001 /* HotkeyChannel.swift */; };
 		AA000001AABBCCDD00000002 /* AudioCaptureChannel.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA000002AABBCCDD00000002 /* AudioCaptureChannel.swift */; };
 		AA000001AABBCCDD00000003 /* PasteChannel.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA000002AABBCCDD00000003 /* PasteChannel.swift */; };
+		AA000001AABBCCDD00000004 /* SoundChannel.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA000002AABBCCDD00000004 /* SoundChannel.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -94,6 +95,7 @@
 		AA000002AABBCCDD00000001 /* HotkeyChannel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HotkeyChannel.swift; sourceTree = "<group>"; };
 		AA000002AABBCCDD00000002 /* AudioCaptureChannel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioCaptureChannel.swift; sourceTree = "<group>"; };
 		AA000002AABBCCDD00000003 /* PasteChannel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PasteChannel.swift; sourceTree = "<group>"; };
+		AA000002AABBCCDD00000004 /* SoundChannel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SoundChannel.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -198,6 +200,7 @@
 				AA000002AABBCCDD00000001 /* HotkeyChannel.swift */,
 				AA000002AABBCCDD00000002 /* AudioCaptureChannel.swift */,
 				AA000002AABBCCDD00000003 /* PasteChannel.swift */,
+				AA000002AABBCCDD00000004 /* SoundChannel.swift */,
 			);
 			path = PlatformChannels;
 			sourceTree = "<group>";
@@ -460,6 +463,7 @@
 				AA000001AABBCCDD00000001 /* HotkeyChannel.swift in Sources */,
 				AA000001AABBCCDD00000002 /* AudioCaptureChannel.swift in Sources */,
 				AA000001AABBCCDD00000003 /* PasteChannel.swift in Sources */,
+				AA000001AABBCCDD00000004 /* SoundChannel.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

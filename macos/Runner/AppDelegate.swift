@@ -6,6 +6,7 @@ class AppDelegate: FlutterAppDelegate {
     private var hotkeyChannel: HotkeyChannel?
     private var audioCaptureChannel: AudioCaptureChannel?
     private var pasteChannel: PasteChannel?
+    private var soundChannel: SoundChannel?
 
     override func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
         // Tray-only app — do not quit when the window closes.
@@ -27,5 +28,6 @@ class AppDelegate: FlutterAppDelegate {
         hotkeyChannel = HotkeyChannel(messenger: messenger)
         audioCaptureChannel = AudioCaptureChannel(messenger: messenger)
         pasteChannel = PasteChannel(messenger: messenger)
+        soundChannel = SoundChannel(messenger: messenger)
     }
 }
