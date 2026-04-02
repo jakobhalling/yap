@@ -327,13 +327,17 @@ class UpdateService {
   }
 
   Future<void> _installWindows(String setupExePath) async {
-    // Launch the Inno Setup installer. It handles killing the old process and
-    // installing the new version. /SILENT runs without UI prompts.
-    Process.start(
+    // Launch the Inno Setup installer in detached mode. The installer is
+    // configured with CloseApplications=force so it will wait for us to exit,
+    // then replace the files and relaunch the app via its [Run] section.
+    await Process.start(
       setupExePath,
-      ['/SILENT', '/RESTARTAPPLICATIONS'],
+      ['/SILENT', '/CLOSEAPPLICATIONS'],
       mode: ProcessStartMode.detached,
     );
+
+    // Give the installer process a moment to start before we exit.
+    await Future<void>.delayed(const Duration(seconds: 1));
 
     // Exit so the installer can replace our files.
     exit(0);
