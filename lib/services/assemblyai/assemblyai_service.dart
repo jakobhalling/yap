@@ -86,6 +86,7 @@ class AssemblyAIServiceImpl implements AssemblyAIService {
 
   final _transcriptController = StreamController<TranscriptSegment>.broadcast();
   final List<String> _finalSegments = [];
+  String _latestPartial = '';
 
   Completer<void>? _terminationCompleter;
   bool _isActive = false;
@@ -140,6 +141,7 @@ class AssemblyAIServiceImpl implements AssemblyAIService {
     }
 
     _finalSegments.clear();
+    _latestPartial = '';
     _terminationCompleter = null;
     _audioChunksSent = 0;
     _messagesReceived = 0;
@@ -205,11 +207,22 @@ class AssemblyAIServiceImpl implements AssemblyAIService {
     _channel!.sink.add(jsonEncode({'type': 'Terminate'}));
 
     // Wait for the Termination response (with a timeout).
+    // AssemblyAI may still send final transcript segments before the
+    // Termination ack, so this also gives time for those to arrive.
     try {
       await _terminationCompleter!.future
           .timeout(const Duration(seconds: 5));
     } on TimeoutException {
       // Timed out waiting — close anyway.
+    }
+
+    // Preserve the last partial transcript that was never finalized.
+    // This happens when the user stops recording mid-sentence — AssemblyAI
+    // only sends end_of_turn after detecting a speech pause, so the last
+    // words remain as a partial. Capture them so they aren't lost.
+    if (_latestPartial.isNotEmpty) {
+      _finalSegments.add(_latestPartial);
+      _latestPartial = '';
     }
 
     await _cleanup();
@@ -266,6 +279,9 @@ class AssemblyAIServiceImpl implements AssemblyAIService {
 
       if (isFinal) {
         _finalSegments.add(text);
+        _latestPartial = '';
+      } else {
+        _latestPartial = text;
       }
 
       _transcriptController.add(segment);

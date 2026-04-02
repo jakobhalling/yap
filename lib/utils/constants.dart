@@ -2,4 +2,4 @@
 
 /// Application identity.
 const String appName = 'Yap';
-const String appVersion = '1.0.4';
+const String appVersion = '1.0.5';

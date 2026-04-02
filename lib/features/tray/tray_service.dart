@@ -5,6 +5,7 @@ import 'package:system_tray/system_tray.dart';
 import 'package:window_manager/window_manager.dart';
 
 import 'package:yap/features/recording/recording_service.dart';
+import 'package:yap/utils/constants.dart';
 
 /// Manages the system-tray icon and context menu.
 ///
@@ -108,7 +109,7 @@ class TrayService {
   void _showAbout() {
     // Simple about dialog — in a real app this would use a proper dialog
     // shown from the overlay or main window context.
-    debugPrint('Yap v1.0.0 — Voice-driven text input');
+    debugPrint('Yap v$appVersion — Voice-driven text input');
   }
 
   Future<void> _quit() async {
