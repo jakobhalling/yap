@@ -21,7 +21,7 @@ TextStyle _font(double size, {FontWeight weight = FontWeight.w300, Color color =
   );
 }
 
-TextStyle _mono(double size, {Color color = Colors.white54}) {
+TextStyle _mono(double size, {Color color = Colors.white70}) {
   return GoogleFonts.jetBrainsMono(
     fontSize: size,
     fontWeight: FontWeight.w400,
@@ -164,7 +164,7 @@ class _OverlayScreenState extends ConsumerState<OverlayScreen> {
             height: 14,
             child: Text(
               display.isEmpty ? '' : display,
-              style: _mono(9, color: Colors.white.withValues(alpha: 0.85)),
+              style: _mono(9, color: Colors.white.withValues(alpha: 0.9)),
               maxLines: 1,
               overflow: TextOverflow.clip,
               textAlign: TextAlign.center,
@@ -189,12 +189,12 @@ class _OverlayScreenState extends ConsumerState<OverlayScreen> {
             children: [
               Text(
                 'ready',
-                style: _font(11, weight: FontWeight.w500, color: Colors.white38),
+                style: _font(11, weight: FontWeight.w500, color: Colors.white70),
               ),
               const SizedBox(width: 8),
               Text(
                 '${_state.transcript.length} chars · ${_state.elapsed.inSeconds}s',
-                style: _mono(9, color: Colors.white24),
+                style: _mono(9, color: Colors.white54),
               ),
             ],
           ),
@@ -206,7 +206,7 @@ class _OverlayScreenState extends ConsumerState<OverlayScreen> {
             child: SingleChildScrollView(
               child: Text(
                 _state.transcript,
-                style: _font(12, color: Colors.white70),
+                style: _font(12, color: Colors.white.withValues(alpha: 0.9)),
               ),
             ),
           ),
@@ -252,12 +252,12 @@ class _OverlayScreenState extends ConsumerState<OverlayScreen> {
               const SizedBox(width: 8),
               Text(
                 _state.profileName?.toLowerCase() ?? 'processing',
-                style: _font(11, weight: FontWeight.w500, color: Colors.white54),
+                style: _font(11, weight: FontWeight.w500, color: Colors.white70),
               ),
               const Spacer(),
               Text(
                 '${_state.processedText.length} chars',
-                style: _mono(9, color: Colors.white24),
+                style: _mono(9, color: Colors.white54),
               ),
             ],
           ),
@@ -271,14 +271,14 @@ class _OverlayScreenState extends ConsumerState<OverlayScreen> {
                 reverse: true,
                 child: Text(
                   _state.processedText,
-                  style: _font(12, color: Colors.white70),
+                  style: _font(12, color: Colors.white.withValues(alpha: 0.9)),
                 ),
               ),
             )
           else
             Text(
               'waiting for response...',
-              style: _font(11, color: Colors.white24),
+              style: _font(11, color: Colors.white54),
             ),
           const SizedBox(height: 12),
           _divider(),
@@ -317,7 +317,7 @@ class _OverlayScreenState extends ConsumerState<OverlayScreen> {
               const SizedBox(width: 8),
               Text(
                 '${_state.processedText.length} chars',
-                style: _mono(9, color: Colors.white24),
+                style: _mono(9, color: Colors.white54),
               ),
             ],
           ),
@@ -406,7 +406,7 @@ class _OverlayScreenState extends ConsumerState<OverlayScreen> {
             const SizedBox(height: 8),
             Text(
               '${_state.transcript.length} chars captured',
-              style: _mono(9, color: Colors.white24),
+              style: _mono(9, color: Colors.white54),
             ),
           ],
           const SizedBox(height: 14),
@@ -428,8 +428,8 @@ class _OverlayScreenState extends ConsumerState<OverlayScreen> {
   // ─── Shared components ─────────────────────────────────────────────────────
 
   Widget _key(String k, String label, {bool muted = false}) {
-    final keyColor = muted ? Colors.white24 : Colors.white54;
-    final labelColor = muted ? Colors.white.withValues(alpha: 0.2) : Colors.white38;
+    final keyColor = muted ? Colors.white38 : Colors.white70;
+    final labelColor = muted ? Colors.white38 : Colors.white60;
 
     return Row(
       mainAxisSize: MainAxisSize.min,
@@ -462,10 +462,10 @@ class _OverlayScreenState extends ConsumerState<OverlayScreen> {
               Icon(
                 Icons.content_copy_rounded,
                 size: 12,
-                color: Colors.white.withValues(alpha: 0.5),
+                color: Colors.white.withValues(alpha: 0.7),
               ),
               const SizedBox(width: 4),
-              Text('alt+c', style: _mono(8, color: Colors.white.withValues(alpha: 0.35))),
+              Text('alt+c', style: _mono(8, color: Colors.white.withValues(alpha: 0.55))),
             ],
           ),
         ),
@@ -476,7 +476,7 @@ class _OverlayScreenState extends ConsumerState<OverlayScreen> {
   Widget _divider() {
     return Container(
       height: 1,
-      color: Colors.white.withValues(alpha: 0.06),
+      color: Colors.white.withValues(alpha: 0.1),
     );
   }
 
@@ -486,7 +486,7 @@ class _OverlayScreenState extends ConsumerState<OverlayScreen> {
       height: 10,
       child: CircularProgressIndicator(
         strokeWidth: 1.5,
-        color: Colors.white.withValues(alpha: 0.4),
+        color: Colors.white.withValues(alpha: 0.5),
       ),
     );
   }
