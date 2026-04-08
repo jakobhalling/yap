@@ -33,6 +33,29 @@ To build the installer locally, install [Inno Setup 6](https://jrsoftware.org/is
 .\scripts\build_installer.ps1
 ```
 
+## macOS Code Signing
+
+The macOS build uses a self-signed certificate ("Yap Developer") so that accessibility permissions persist across app updates. Without a stable code signature, macOS revokes accessibility access every time the binary changes.
+
+### Setup for CI
+
+The release workflow expects two repository secrets:
+
+- `MACOS_CERTIFICATE_B64` — base64-encoded .p12 certificate
+- `MACOS_CERTIFICATE_PWD` — password for the .p12 file
+
+To generate a new certificate (e.g., on a new machine or when it expires):
+
+```bash
+./installer/create_signing_cert.sh
+```
+
+This creates the certificate, imports it to your login keychain, and prints the base64 + password to add as GitHub repository secrets.
+
+### Local development
+
+The same certificate must be in your login keychain for local builds. Run the script above, then in Keychain Access (login keychain > Keys), set the private key's Access Control to allow `codesign`.
+
 ## Tech Stack
 
 - **Framework:** Flutter (desktop)

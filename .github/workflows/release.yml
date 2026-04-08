@@ -69,6 +69,33 @@ jobs:
           channel: stable
           cache: true
 
+      - name: Import code signing certificate
+        env:
+          MACOS_CERTIFICATE_B64: ${{ secrets.MACOS_CERTIFICATE_B64 }}
+          MACOS_CERTIFICATE_PWD: ${{ secrets.MACOS_CERTIFICATE_PWD }}
+        run: |
+          # Decode certificate
+          echo "$MACOS_CERTIFICATE_B64" | base64 --decode > /tmp/certificate.p12
+
+          # Create a temporary keychain
+          KEYCHAIN_PATH="$RUNNER_TEMP/signing.keychain-db"
+          KEYCHAIN_PWD="$(openssl rand -hex 16)"
+          security create-keychain -p "$KEYCHAIN_PWD" "$KEYCHAIN_PATH"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
+          security unlock-keychain -p "$KEYCHAIN_PWD" "$KEYCHAIN_PATH"
+
+          # Import certificate to keychain
+          security import /tmp/certificate.p12 -P "$MACOS_CERTIFICATE_PWD" \
+            -A -t cert -f pkcs12 -k "$KEYCHAIN_PATH"
+
+          # Allow codesign to access the keychain without prompt
+          security set-key-partition-list -S apple-tool:,apple: -s -k "$KEYCHAIN_PWD" "$KEYCHAIN_PATH"
+
+          # Add temporary keychain to search list (prepend so it's found first)
+          security list-keychains -d user -s "$KEYCHAIN_PATH" $(security list-keychains -d user | tr -d '"')
+
+          echo "KEYCHAIN_PATH=$KEYCHAIN_PATH" >> $GITHUB_ENV
+
       - name: Set version from tag
         run: |
           VERSION="${GITHUB_REF_NAME#v}"
@@ -83,8 +110,26 @@ jobs:
       - name: Build macOS release
         run: flutter build macos --release
 
+      - name: Codesign app bundle
+        run: |
+          APP_PATH="build/macos/Build/Products/Release/yap.app"
+          # Deep sign all nested binaries and frameworks first, then the app itself
+          codesign --deep --force --sign "Yap Developer" \
+            --entitlements macos/Runner/Release.entitlements \
+            "$APP_PATH"
+          # Verify
+          codesign --verify --deep --strict "$APP_PATH"
+          echo "Code signing verified successfully"
+
       - name: Create DMG
         run: ./installer/create_dmg.sh "$VERSION"
+
+      - name: Cleanup keychain
+        if: always()
+        run: |
+          if [ -n "$KEYCHAIN_PATH" ]; then
+            security delete-keychain "$KEYCHAIN_PATH" 2>/dev/null || true
+          fi
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
