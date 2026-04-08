@@ -297,16 +297,24 @@ class UpdateService {
     // and relaunches.
     final scriptPath =
         p.join(Directory.systemTemp.path, 'yap-updater.sh');
+    final logPath =
+        p.join(Directory.systemTemp.path, 'yap-updater.log');
     final script = '#!/bin/bash\n'
-        '# Wait for old process to exit\n'
-        'while kill -0 $currentPid 2>/dev/null; do sleep 0.2; done\n'
+        'set -e\n'
+        'exec > "$logPath" 2>&1\n'
         '\n'
-        '# Replace app bundle\n'
+        '# Wait for old process to exit\n'
+        'for i in \$(seq 1 50); do\n'
+        '  kill -0 $currentPid 2>/dev/null || break\n'
+        '  sleep 0.2\n'
+        'done\n'
+        '\n'
+        '# Replace app bundle using ditto (preserves code signatures & xattrs)\n'
         'rm -rf "$appBundlePath"\n'
-        'cp -R "$newAppPath" "$appBundlePath"\n'
+        'ditto "$newAppPath" "$appBundlePath"\n'
         '\n'
         '# Unmount DMG and clean up\n'
-        'hdiutil detach "$mountPoint" -quiet 2>/dev/null\n'
+        'hdiutil detach "$mountPoint" -quiet 2>/dev/null || true\n'
         'rm -f "$dmgPath"\n'
         'rm -f "$scriptPath"\n'
         '\n'
@@ -316,7 +324,7 @@ class UpdateService {
 
     // Make executable and launch detached.
     await Process.run('chmod', ['+x', scriptPath]);
-    Process.start(
+    await Process.start(
       '/bin/bash',
       [scriptPath],
       mode: ProcessStartMode.detached,
