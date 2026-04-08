@@ -96,12 +96,7 @@ class _AppState extends ConsumerState<App> {
 
     // Load saved trigger key before starting hotkey monitoring
     final triggerKey = await settingsService.getTriggerKey();
-    try {
-      await hotkeyService.start(triggerKey: triggerKey);
-    } catch (e) {
-      debugPrint('[Yap] Hotkey start failed: $e');
-      debugPrint('[Yap] You may need to re-grant Accessibility permission after a rebuild.');
-    }
+    await _startHotkeyWithRetry(hotkeyService, triggerKey);
 
     _trayService = TrayService(recordingService: recordingService);
     _trayService!.onToggleRecording = () {
@@ -118,6 +113,30 @@ class _AppState extends ConsumerState<App> {
     // Check for updates in background after startup.
     final updateService = ref.read(updateServiceProvider);
     updateService.checkForUpdate(appVersion);
+  }
+
+  /// Starts hotkey monitoring, retrying if accessibility permission is pending.
+  /// On macOS the user may have just granted permission in System Settings;
+  /// TCC can take a moment to propagate.
+  Future<void> _startHotkeyWithRetry(
+    dynamic hotkeyService,
+    String? triggerKey,
+  ) async {
+    for (var attempt = 0; attempt < 3; attempt++) {
+      try {
+        await hotkeyService.start(triggerKey: triggerKey);
+        return; // success
+      } catch (e) {
+        debugPrint('[Yap] Hotkey start attempt ${attempt + 1} failed: $e');
+        if (attempt < 2) {
+          await Future.delayed(const Duration(seconds: 2));
+        }
+      }
+    }
+    debugPrint(
+      '[Yap] Hotkey start failed after retries. '
+      'Check Accessibility permission in System Settings.',
+    );
   }
 
   /// Open settings or history in the main window (temporarily visible).

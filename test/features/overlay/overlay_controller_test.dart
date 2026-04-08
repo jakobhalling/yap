@@ -27,11 +27,17 @@ class MockHotkeyService implements HotkeyService {
   void emitDoubleTap() => _controller.add(null);
 
   @override
-  Future<void> start() async {}
+  Future<void> start({String? triggerKey}) async {}
   @override
   Future<void> stop() async {}
   @override
   Future<void> setDoubleTapThreshold(int milliseconds) async {}
+  @override
+  Future<void> setTriggerKey(String key) async {}
+  @override
+  Future<bool> checkAccessibility() async => true;
+  @override
+  Future<bool> requestAccessibility() async => true;
 
   void dispose() => _controller.close();
 }

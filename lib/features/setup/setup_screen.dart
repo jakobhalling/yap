@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
@@ -5,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:yap/features/processing/processing_providers.dart';
 import 'package:yap/features/settings/settings_providers.dart';
+import 'package:yap/services/providers.dart';
 
 /// First-boot setup wizard. Walks the user through:
 /// 1. Welcome
@@ -32,27 +34,50 @@ class _SetupScreenState extends ConsumerState<SetupScreen> {
   bool? _anthropicValid;
   String? _anthropicError;
 
-  static const _totalSteps = 4;
+  // Accessibility permission state (macOS only)
+  bool _accessibilityGranted = false;
+  bool _accessibilityRequested = false;
+  Timer? _accessibilityPollTimer;
+
+  static final int _totalSteps = Platform.isMacOS ? 5 : 4;
 
   @override
   void dispose() {
     _assemblyController.dispose();
     _anthropicController.dispose();
+    _accessibilityPollTimer?.cancel();
     super.dispose();
   }
 
   bool get _canAdvance {
-    switch (_step) {
-      case 0:
-        return true; // Welcome
-      case 1:
-        return _assemblyController.text.trim().isNotEmpty;
-      case 2:
-        return _anthropicController.text.trim().isNotEmpty;
-      case 3:
-        return true; // Hotkey info
-      default:
-        return true;
+    if (Platform.isMacOS) {
+      switch (_step) {
+        case 0:
+          return true; // Welcome
+        case 1:
+          return _assemblyController.text.trim().isNotEmpty;
+        case 2:
+          return _anthropicController.text.trim().isNotEmpty;
+        case 3:
+          return _accessibilityGranted; // Accessibility permission
+        case 4:
+          return true; // Hotkey info
+        default:
+          return true;
+      }
+    } else {
+      switch (_step) {
+        case 0:
+          return true; // Welcome
+        case 1:
+          return _assemblyController.text.trim().isNotEmpty;
+        case 2:
+          return _anthropicController.text.trim().isNotEmpty;
+        case 3:
+          return true; // Hotkey info
+        default:
+          return true;
+      }
     }
   }
 
@@ -69,6 +94,10 @@ class _SetupScreenState extends ConsumerState<SetupScreen> {
 
     if (_step < _totalSteps - 1) {
       setState(() => _step++);
+      // Start polling for accessibility when entering that step
+      if (Platform.isMacOS && _step == 3) {
+        _checkAccessibility();
+      }
     } else {
       // Mark setup complete
       final settings = ref.read(settingsServiceProvider);
@@ -163,17 +192,34 @@ class _SetupScreenState extends ConsumerState<SetupScreen> {
   }
 
   Widget _buildStep(BuildContext context) {
-    switch (_step) {
-      case 0:
-        return _welcomeStep(context);
-      case 1:
-        return _assemblyKeyStep(context);
-      case 2:
-        return _anthropicKeyStep(context);
-      case 3:
-        return _hotkeyStep(context);
-      default:
-        return const SizedBox.shrink();
+    if (Platform.isMacOS) {
+      switch (_step) {
+        case 0:
+          return _welcomeStep(context);
+        case 1:
+          return _assemblyKeyStep(context);
+        case 2:
+          return _anthropicKeyStep(context);
+        case 3:
+          return _accessibilityStep(context);
+        case 4:
+          return _hotkeyStep(context);
+        default:
+          return const SizedBox.shrink();
+      }
+    } else {
+      switch (_step) {
+        case 0:
+          return _welcomeStep(context);
+        case 1:
+          return _assemblyKeyStep(context);
+        case 2:
+          return _anthropicKeyStep(context);
+        case 3:
+          return _hotkeyStep(context);
+        default:
+          return const SizedBox.shrink();
+      }
     }
   }
 
@@ -347,6 +393,113 @@ class _SetupScreenState extends ConsumerState<SetupScreen> {
             color: theme.colorScheme.onSurfaceVariant,
           ),
         ),
+      ],
+    );
+  }
+
+  Future<void> _checkAccessibility() async {
+    final hotkeyService = ref.read(hotkeyServiceProvider);
+    final granted = await hotkeyService.checkAccessibility();
+    if (mounted) {
+      setState(() => _accessibilityGranted = granted);
+    }
+  }
+
+  Future<void> _requestAccessibility() async {
+    final hotkeyService = ref.read(hotkeyServiceProvider);
+    await hotkeyService.requestAccessibility();
+    setState(() => _accessibilityRequested = true);
+    // Poll for permission grant — user toggles it in System Settings
+    _accessibilityPollTimer?.cancel();
+    _accessibilityPollTimer = Timer.periodic(
+      const Duration(seconds: 1),
+      (_) => _pollAccessibility(),
+    );
+  }
+
+  Future<void> _pollAccessibility() async {
+    final hotkeyService = ref.read(hotkeyServiceProvider);
+    final granted = await hotkeyService.checkAccessibility();
+    if (granted && mounted) {
+      _accessibilityPollTimer?.cancel();
+      setState(() => _accessibilityGranted = true);
+    }
+  }
+
+  Widget _accessibilityStep(BuildContext context) {
+    final theme = Theme.of(context);
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(
+          _accessibilityGranted ? Icons.check_circle : Icons.security,
+          size: 48,
+          color: _accessibilityGranted
+              ? Colors.green
+              : theme.colorScheme.primary,
+        ),
+        const SizedBox(height: 24),
+        Text(
+          'Accessibility Permission',
+          style: theme.textTheme.headlineSmall?.copyWith(
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+        const SizedBox(height: 12),
+        Text(
+          'Yap needs Accessibility permission to detect the global hotkey '
+          'and paste text into other applications.',
+          style: theme.textTheme.bodyMedium,
+          textAlign: TextAlign.center,
+        ),
+        const SizedBox(height: 24),
+        if (_accessibilityGranted) ...[
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: Colors.green.withValues(alpha: 0.1),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Icon(Icons.check_circle, color: Colors.green, size: 20),
+                const SizedBox(width: 8),
+                Text(
+                  'Accessibility permission granted',
+                  style: theme.textTheme.bodyMedium?.copyWith(
+                    color: Colors.green,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ] else ...[
+          FilledButton.icon(
+            onPressed: _requestAccessibility,
+            icon: const Icon(Icons.open_in_new, size: 18),
+            label: const Text('Open System Settings'),
+          ),
+          const SizedBox(height: 16),
+          if (_accessibilityRequested)
+            Text(
+              'Toggle Yap on in System Settings > Privacy & Security > Accessibility, '
+              'then come back here.',
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
+              textAlign: TextAlign.center,
+            )
+          else
+            Text(
+              'Click the button above to open System Settings and enable Yap.',
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
+              textAlign: TextAlign.center,
+            ),
+        ],
       ],
     );
   }

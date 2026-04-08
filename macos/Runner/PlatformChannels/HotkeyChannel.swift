@@ -86,6 +86,14 @@ class HotkeyChannel: NSObject, FlutterStreamHandler {
             }
             result(nil)
 
+        case "checkAccessibility":
+            result(AXIsProcessTrusted())
+
+        case "requestAccessibility":
+            let options = [kAXTrustedCheckOptionPrompt.takeRetainedValue(): true] as CFDictionary
+            AXIsProcessTrustedWithOptions(options)
+            result(AXIsProcessTrusted())
+
         default:
             result(FlutterMethodNotImplemented)
         }

@@ -37,6 +37,12 @@ class MockHotkeyService implements HotkeyService {
     triggerKey = key;
   }
 
+  @override
+  Future<bool> checkAccessibility() async => true;
+
+  @override
+  Future<bool> requestAccessibility() async => true;
+
   /// Simulate a double-tap event for testing purposes.
   void simulateDoubleTap() {
     _controller.add(null);

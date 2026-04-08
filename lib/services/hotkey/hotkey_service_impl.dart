@@ -72,4 +72,16 @@ class HotkeyServiceImpl implements HotkeyService {
       <String, dynamic>{'key': key},
     );
   }
+
+  @override
+  Future<bool> checkAccessibility() async {
+    final result = await _methodChannel.invokeMethod<bool>('checkAccessibility');
+    return result ?? false;
+  }
+
+  @override
+  Future<bool> requestAccessibility() async {
+    final result = await _methodChannel.invokeMethod<bool>('requestAccessibility');
+    return result ?? false;
+  }
 }

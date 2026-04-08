@@ -23,4 +23,12 @@ abstract class HotkeyService {
   /// 'left_control', 'right_control', 'left_shift', 'right_shift',
   /// 'left_alt', 'right_alt', 'fn'.
   Future<void> setTriggerKey(String key);
+
+  /// Check if the app has accessibility permission (macOS only).
+  /// Returns true on platforms that don't require it.
+  Future<bool> checkAccessibility();
+
+  /// Request accessibility permission from the OS (macOS only).
+  /// Opens System Settings prompt. Returns current grant status.
+  Future<bool> requestAccessibility();
 }
