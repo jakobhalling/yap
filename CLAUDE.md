@@ -94,11 +94,12 @@ User selects profile (1-4) → ProcessingService
 
 ## Versioning & Releases
 
-- Version lives in `pubspec.yaml` (`version: X.Y.Z+build`)
+- Version is auto-incremented by CI — **do not manually bump versions**
 - `lib/utils/constants.dart` has `appVersion` (updated by CI from tag)
 - `installer/yap.iss` has `MyAppVersion` (updated by CI from tag)
-- **Release flow:** Push to `main` with a version bump in `pubspec.yaml` → GitHub Actions auto-creates a `vX.Y.Z` tag → triggers the release build pipeline
-- Use semantic versioning: patch for fixes, minor for features, major for breaking changes
+- `pubspec.yaml` version is updated by CI during build (from tag)
+- **Release flow:** Push to `main` → GitHub Actions auto-increments patch version from latest tag → creates `vX.Y.Z` tag → triggers the release build pipeline
+- For minor/major bumps, manually create a tag (e.g., `v2.0.0`) before pushing
 
 ## Important Files
 
@@ -109,7 +110,7 @@ User selects profile (1-4) → ProcessingService
 | `macos/Runner/PlatformChannels/HotkeyChannel.swift` | macOS global hotkey via CGEventTap |
 | `macos/Runner/PlatformChannels/AudioCaptureChannel.swift` | macOS audio capture via AVAudioEngine |
 | `.github/workflows/release.yml` | Windows installer build + GitHub Release |
-| `.github/workflows/auto-tag.yml` | Auto-creates git tag from pubspec.yaml version on push to main |
+| `.github/workflows/auto-tag.yml` | Auto-increments patch version and creates tag on every push to main |
 
 ## Agent Specifications
 

@@ -1,11 +1,9 @@
-name: Auto-tag on version bump
+name: Auto-tag on push
 
 on:
   push:
     branches:
       - main
-    paths:
-      - 'pubspec.yaml'
 
 permissions:
   contents: write
@@ -18,22 +16,27 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
         with:
-          fetch-depth: 2
+          fetch-depth: 0
 
-      - name: Extract version and create tag if new
+      - name: Compute next version and create tag
         id: tag
         run: |
-          VERSION=$(grep '^version:' pubspec.yaml | sed 's/version: //' | sed 's/+.*//')
-          echo "Detected version: $VERSION"
-          echo "version=$VERSION" >> $GITHUB_OUTPUT
-
-          if git rev-parse "v${VERSION}" >/dev/null 2>&1; then
-            echo "Tag v${VERSION} already exists, skipping"
-            echo "created=false" >> $GITHUB_OUTPUT
-            exit 0
+          # Get the latest version tag, default to 0.0.0 if none exist
+          LATEST=$(git tag -l 'v*' --sort=-v:refname | head -n1 | sed 's/^v//')
+          if [ -z "$LATEST" ]; then
+            LATEST="0.0.0"
           fi
 
-          echo "Creating tag v${VERSION}"
+          # Bump patch version
+          MAJOR=$(echo "$LATEST" | cut -d. -f1)
+          MINOR=$(echo "$LATEST" | cut -d. -f2)
+          PATCH=$(echo "$LATEST" | cut -d. -f3)
+          NEXT_PATCH=$((PATCH + 1))
+          VERSION="${MAJOR}.${MINOR}.${NEXT_PATCH}"
+
+          echo "Latest: $LATEST → Next: $VERSION"
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git tag -a "v${VERSION}" -m "Release v${VERSION}"

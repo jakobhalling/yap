@@ -1,6 +1,4 @@
 PODS:
-  - audioplayers_darwin (0.0.1):
-    - FlutterMacOS
   - FlutterMacOS (1.0.0)
   - screen_retriever (0.0.1):
     - FlutterMacOS
@@ -38,7 +36,6 @@ PODS:
     - FlutterMacOS
 
 DEPENDENCIES:
-  - audioplayers_darwin (from `Flutter/ephemeral/.symlinks/plugins/audioplayers_darwin/macos`)
   - FlutterMacOS (from `Flutter/ephemeral`)
   - screen_retriever (from `Flutter/ephemeral/.symlinks/plugins/screen_retriever/macos`)
   - shared_preferences_foundation (from `Flutter/ephemeral/.symlinks/plugins/shared_preferences_foundation/darwin`)
@@ -51,8 +48,6 @@ SPEC REPOS:
     - sqlite3
 
 EXTERNAL SOURCES:
-  audioplayers_darwin:
-    :path: Flutter/ephemeral/.symlinks/plugins/audioplayers_darwin/macos
   FlutterMacOS:
     :path: Flutter/ephemeral
   screen_retriever:
@@ -67,7 +62,6 @@ EXTERNAL SOURCES:
     :path: Flutter/ephemeral/.symlinks/plugins/window_manager/macos
 
 SPEC CHECKSUMS:
-  audioplayers_darwin: 761f2948df701d05b5db603220c384fb55720012
   FlutterMacOS: d0db08ddef1a9af05a5ec4b724367152bb0500b1
   screen_retriever: 4f97c103641aab8ce183fa5af3b87029df167936
   shared_preferences_foundation: 7036424c3d8ec98dfe75ff1667cb0cd531ec82bb
