@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:ui';
 
 import 'package:flutter/material.dart';
 import 'package:system_tray/system_tray.dart';
@@ -22,16 +23,22 @@ class TrayService {
 
   final SystemTray _tray = SystemTray();
   bool _isRecording = false;
+  Brightness _currentBrightness = PlatformDispatcher.instance.platformBrightness;
+
+  /// Returns the icon path for the current platform, recording state, and theme.
+  String _iconPath({required bool recording}) {
+    final isDark = _currentBrightness == Brightness.dark;
+    final variant = isDark ? 'dark' : 'light';
+    final state = recording ? 'tray_icon_recording' : 'tray_icon';
+    final ext = Platform.isWindows ? 'ico' : 'png';
+    return 'assets/icons/${state}_$variant.$ext';
+  }
 
   /// Initialize the tray icon and context menu. Call once at app startup.
   Future<void> init() async {
-    final iconPath = Platform.isWindows
-        ? 'assets/icons/tray_icon.ico'
-        : 'assets/icons/tray_icon.png';
-
     await _tray.initSystemTray(
       title: 'Yap',
-      iconPath: iconPath,
+      iconPath: _iconPath(recording: false),
       toolTip: 'Yap — voice to text',
     );
 
@@ -43,6 +50,15 @@ class TrayService {
         _tray.popUpContextMenu();
       }
     });
+
+    // Listen for system theme changes and update icon accordingly.
+    PlatformDispatcher.instance.onPlatformBrightnessChanged = () {
+      final newBrightness = PlatformDispatcher.instance.platformBrightness;
+      if (newBrightness != _currentBrightness) {
+        _currentBrightness = newBrightness;
+        _updateIcon();
+      }
+    };
   }
 
   /// Rebuild the context menu (e.g., after recording state changes).
@@ -85,25 +101,14 @@ class TrayService {
     if (_isRecording == isRecording) return;
     _isRecording = isRecording;
     await _buildMenu();
+    await _updateIcon();
+  }
 
-    // Swap tray icon if recording-specific icon exists.
-    if (isRecording) {
-      final recordingIcon = Platform.isWindows
-          ? 'assets/icons/tray_icon_recording.ico'
-          : 'assets/icons/tray_icon_recording.png';
-      try {
-        await _tray.setImage(recordingIcon);
-      } catch (_) {
-        // Fall back — recording icon might not exist yet.
-      }
-    } else {
-      final idleIcon = Platform.isWindows
-          ? 'assets/icons/tray_icon.ico'
-          : 'assets/icons/tray_icon.png';
-      try {
-        await _tray.setImage(idleIcon);
-      } catch (_) {}
-    }
+  /// Update the tray icon based on current recording state and system theme.
+  Future<void> _updateIcon() async {
+    try {
+      await _tray.setImage(_iconPath(recording: _isRecording));
+    } catch (_) {}
   }
 
   void _showAbout() {
