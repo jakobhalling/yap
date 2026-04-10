@@ -138,6 +138,7 @@ class RecordingServiceImpl implements RecordingService {
     try {
       // Start audio capture with selected device.
       final deviceId = await getDeviceId?.call();
+      Log.i('Recording', 'Starting audio capture (deviceId: ${deviceId ?? "system default"})');
       await audioService.startCapture(deviceId: deviceId);
     } catch (e) {
       Log.e('Recording', 'Failed to start audio capture', e);

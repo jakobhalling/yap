@@ -148,10 +148,14 @@ class AssemblyAIServiceImpl implements AssemblyAIService {
     _messagesReceived = 0;
 
     // Step 1: Get a temporary token via REST API.
+    Log.i('AssemblyAI', 'Fetching temporary token');
     final tempToken = await _getTemporaryToken(apiKey);
+    Log.i('AssemblyAI', 'Token acquired, connecting WebSocket');
 
     // Step 2: Connect WebSocket with the temporary token.
-    final uri = Uri.parse(AssemblyAIConfig.buildWsUrl(tempToken));
+    final wsUrl = AssemblyAIConfig.buildWsUrl(tempToken);
+    Log.d('AssemblyAI', 'WebSocket URL: ${wsUrl.replaceAll(RegExp(r'token=[^&]+'), 'token=***')}');
+    final uri = Uri.parse(wsUrl);
 
     try {
       _channel = channelFactory != null
@@ -178,13 +182,19 @@ class AssemblyAIServiceImpl implements AssemblyAIService {
     // Forward audio chunks to the WebSocket as raw binary (v3 format).
     // Buffer small chunks to meet AssemblyAI's 50-1000ms requirement.
     _audioBuffer.clear();
+    int _totalBytesReceived = 0;
     _audioSubscription = audioStream.listen(
       (Uint8List chunk) {
         if (!_isActive || _channel == null) return;
+        _totalBytesReceived += chunk.length;
         _audioBuffer.add(chunk);
         if (_audioBuffer.length >= _minChunkBytes) {
           _audioChunksSent++;
-          _channel!.sink.add(_audioBuffer.takeBytes());
+          final bytes = _audioBuffer.takeBytes();
+          _channel!.sink.add(bytes);
+          if (_audioChunksSent == 1) {
+            Log.d('AssemblyAI', 'First audio chunk sent: ${bytes.length} bytes (total received from mic: $_totalBytesReceived bytes)');
+          }
         }
       },
       onError: (Object error) {
@@ -238,28 +248,35 @@ class AssemblyAIServiceImpl implements AssemblyAIService {
 
   void _onMessage(dynamic raw) {
     _messagesReceived++;
-    if (raw is! String) return;
+    if (raw is! String) {
+      Log.d('AssemblyAI', 'Received non-string message (${raw.runtimeType})');
+      return;
+    }
 
     late final Map<String, dynamic> json;
     try {
       json = jsonDecode(raw) as Map<String, dynamic>;
-    } catch (_) {
+    } catch (e) {
+      Log.w('AssemblyAI', 'Failed to parse message: $e');
       return;
     }
 
     final message = AssemblyAIMessage.fromJson(json);
+    Log.d('AssemblyAI', 'Message #$_messagesReceived: type=${message.type}, transcript="${message.transcript ?? ""}", endOfTurn=${message.endOfTurn}');
 
     if (message.isTermination) {
+      Log.i('AssemblyAI', 'Termination acknowledged');
       _terminationCompleter?.complete();
       return;
     }
 
     if (message.isBegin) {
-      // Session confirmed — nothing to emit yet.
+      Log.i('AssemblyAI', 'Session confirmed');
       return;
     }
 
     if (message.isError) {
+      Log.e('AssemblyAI', 'Server error: ${message.error ?? "unknown"}');
       _transcriptController.addError(
         Exception('AssemblyAI error: ${message.error ?? "unknown"}'),
       );
