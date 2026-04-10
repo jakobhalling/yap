@@ -110,12 +110,13 @@ class AssemblyAIServiceImpl implements AssemblyAIService {
   Future<String> _getTemporaryToken(String apiKey) async {
     final dio = Dio();
     try {
-      final response = await dio.get(
+      final response = await dio.post(
         AssemblyAIConfig.tokenUrl,
-        queryParameters: {'expires_in_seconds': 600},
+        data: {'expires_in_seconds': 600},
         options: Options(
           headers: {
             'Authorization': 'Bearer $apiKey',
+            'Content-Type': 'application/json',
           },
         ),
       );
