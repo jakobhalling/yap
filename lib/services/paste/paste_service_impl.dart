@@ -1,5 +1,6 @@
 import 'package:flutter/services.dart';
 
+import '../log_service.dart';
 import 'paste_service.dart';
 
 /// Platform-channel backed implementation of [PasteService].
@@ -16,6 +17,7 @@ class PasteServiceImpl implements PasteService {
 
   @override
   Future<bool> pasteText(String text) async {
+    Log.d('Paste', 'Pasting ${text.length} chars');
     final result = await _methodChannel.invokeMethod<bool>(
       'paste',
       <String, dynamic>{'text': text},

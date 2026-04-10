@@ -1,7 +1,8 @@
 import 'dart:io';
 
-import 'package:flutter/foundation.dart';
 import 'package:path/path.dart' as p;
+
+import 'log_service.dart';
 
 /// Manages "Launch at startup" on macOS (LaunchAgent plist) and Windows
 /// (registry entry under HKCU\Software\Microsoft\Windows\CurrentVersion\Run).
@@ -33,6 +34,7 @@ class StartupService {
 
   /// Enable or disable launch-at-startup for the current executable.
   static Future<void> setLaunchOnStartup(bool enabled) async {
+    Log.i('Startup', 'Launch at login: ${enabled ? "enabled" : "disabled"}');
     if (Platform.isMacOS) {
       await _setMacOS(enabled);
     } else if (Platform.isWindows) {
@@ -64,7 +66,7 @@ class StartupService {
     if (enabled) {
       final appPath = _macAppBundlePath;
       if (appPath == null) {
-        debugPrint('[Yap] Could not determine .app bundle path for LaunchAgent');
+        Log.e('Startup', 'Could not determine .app bundle path for LaunchAgent');
         return;
       }
 

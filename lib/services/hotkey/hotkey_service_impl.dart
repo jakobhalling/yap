@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/services.dart';
 
+import '../log_service.dart';
 import 'hotkey_service.dart';
 
 /// Platform-channel backed implementation of [HotkeyService].
@@ -50,6 +51,7 @@ class HotkeyServiceImpl implements HotkeyService {
 
   @override
   Future<void> stop() async {
+    Log.i('Hotkey', 'Monitoring stopped');
     await _methodChannel.invokeMethod<void>('stop');
     await _eventSubscription?.cancel();
     _eventSubscription = null;

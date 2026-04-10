@@ -4,6 +4,7 @@ import '../../services/claude/claude_service.dart';
 import '../../services/claude/claude_models.dart';
 import '../../services/database/daos/prompt_profile_dao.dart';
 import '../settings/settings_service.dart';
+import '../../services/log_service.dart';
 import 'processing_state.dart';
 
 /// Thrown when trying to process with an empty/unconfigured profile.
@@ -100,6 +101,7 @@ class ProcessingServiceImpl implements ProcessingService {
     final model = await _settingsService.getClaudeModel();
 
     // 4. Start processing.
+    Log.i('Processing', 'Processing ${transcript.length} chars with profile "${profile.name}" (slot $profileSlot, model: $model)');
     _emit(ProcessingState(
       status: ProcessingStatus.processing,
       profileName: profile.name,
@@ -128,6 +130,7 @@ class ProcessingServiceImpl implements ProcessingService {
 
       // 5. Processing complete.
       final finalText = outputBuffer.toString();
+      Log.i('Processing', 'Complete, output: ${finalText.length} chars');
       _emit(ProcessingState(
         status: ProcessingStatus.complete,
         profileName: profile.name,
@@ -135,6 +138,7 @@ class ProcessingServiceImpl implements ProcessingService {
         finalOutput: finalText,
       ));
     } on ClaudeApiException catch (e) {
+      Log.e('Processing', 'Claude API error: ${e.message}');
       _emit(ProcessingState(
         status: ProcessingStatus.error,
         profileName: profile.name,
@@ -142,6 +146,7 @@ class ProcessingServiceImpl implements ProcessingService {
         errorMessage: e.message,
       ));
     } catch (e) {
+      Log.e('Processing', 'Processing failed', e);
       _emit(ProcessingState(
         status: ProcessingStatus.error,
         profileName: profile.name,

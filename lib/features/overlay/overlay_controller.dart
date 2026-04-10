@@ -13,6 +13,7 @@ import 'package:yap/services/hotkey/hotkey_service.dart';
 import 'package:yap/services/audio/audio_service.dart';
 import 'package:yap/services/paste/paste_service.dart';
 import 'package:yap/services/database/daos/prompt_profile_dao.dart';
+import 'package:yap/services/log_service.dart';
 import 'package:yap/shared/prompts/default_prompts.dart';
 
 /// Copy text to clipboard.
@@ -208,6 +209,7 @@ class OverlayController {
   }
 
   Future<void> _startRecording() async {
+    Log.i('Overlay', 'Starting recording');
     try {
       _emit(_state.copyWith(
         phase: OverlayPhase.recording,
@@ -225,6 +227,7 @@ class OverlayController {
         if (_state.phase != OverlayPhase.recording) return;
         _emit(_state.copyWith(transcript: rs.currentTranscript));
         if (rs.status == RecordingStatus.error) {
+          Log.e('Overlay', 'Recording error: ${rs.errorMessage ?? "unknown"}');
           _stopElapsedTimer();
           _emit(_state.copyWith(
             phase: OverlayPhase.error,
@@ -244,6 +247,7 @@ class OverlayController {
       await recordingService.startRecording();
       _startElapsedTimer();
     } catch (e) {
+      Log.e('Overlay', 'Failed to start recording', e);
       _emit(_state.copyWith(
         phase: OverlayPhase.error,
         errorMessage: e.toString(),
@@ -266,12 +270,15 @@ class OverlayController {
           : recordingService.state.currentTranscript;
 
       final profiles = await _loadProfiles();
+      final effectiveTranscript = finalTranscript.isNotEmpty ? finalTranscript : _state.transcript;
+      Log.i('Overlay', 'Recording stopped, transcript: ${effectiveTranscript.length} chars');
       _emit(_state.copyWith(
         phase: OverlayPhase.transcriptComplete,
-        transcript: finalTranscript.isNotEmpty ? finalTranscript : _state.transcript,
+        transcript: effectiveTranscript,
         profiles: profiles,
       ));
     } catch (e) {
+      Log.e('Overlay', 'Failed to stop recording', e);
       _emit(_state.copyWith(
         phase: OverlayPhase.error,
         errorMessage: e.toString(),
@@ -327,6 +334,7 @@ class OverlayController {
   Future<void> processWithProfile(int slot) async {
     final profile = _state.profiles.where((p) => p.slot == slot).firstOrNull;
     if (profile == null || profile.isEmpty) return;
+    Log.i('Overlay', 'Processing with profile "${profile.name}" (slot $slot)');
 
     _emit(_state.copyWith(
       phase: OverlayPhase.processing,
@@ -341,12 +349,14 @@ class OverlayController {
       if (_state.phase != OverlayPhase.processing) return;
       _emit(_state.copyWith(processedText: ps.streamingOutput));
       if (ps.status == ProcessingStatus.complete) {
+        Log.i('Overlay', 'Processing complete, output: ${ps.finalOutput?.length ?? 0} chars');
         _emit(_state.copyWith(
           phase: OverlayPhase.readyToPaste,
           processedText: ps.finalOutput,
         ));
         _processingSub?.cancel();
       } else if (ps.status == ProcessingStatus.error) {
+        Log.e('Overlay', 'Processing error: ${ps.errorMessage}');
         _emit(_state.copyWith(
           phase: OverlayPhase.error,
           errorMessage: ps.errorMessage ?? 'Processing error',
@@ -405,6 +415,7 @@ class OverlayController {
   }
 
   Future<void> _pasteAndSave(String text, {required bool isProcessed}) async {
+    Log.i('Overlay', 'Pasting ${text.length} chars (processed: $isProcessed)');
     try {
       await pasteService.pasteText(text);
     } catch (_) {
@@ -434,6 +445,7 @@ class OverlayController {
   // ---- cancel / reset ------------------------------------------------------
 
   void cancel() {
+    Log.i('Overlay', 'Cancelled from phase: ${_state.phase.name}');
     if (_state.phase == OverlayPhase.recording) {
       recordingService.cancelRecording();
       _stopElapsedTimer();

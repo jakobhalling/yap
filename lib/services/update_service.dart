@@ -2,8 +2,9 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
-import 'package:flutter/foundation.dart';
 import 'package:path/path.dart' as p;
+
+import 'log_service.dart';
 
 // ---------------------------------------------------------------------------
 // State
@@ -134,6 +135,7 @@ class UpdateService {
       }
 
       if (isNewer(currentVersion, latestVersion) && downloadUrl != null) {
+        Log.i('Update', 'Update available: v$latestVersion (current: v$currentVersion)');
         _emit(UpdateState(
           status: UpdateStatus.updateAvailable,
           availableVersion: latestVersion,
@@ -141,10 +143,11 @@ class UpdateService {
           releaseNotes: releaseNotes,
         ));
       } else {
+        Log.i('Update', 'Up to date (v$currentVersion)');
         _emit(const UpdateState(status: UpdateStatus.upToDate));
       }
     } catch (e) {
-      debugPrint('[Yap] Update check failed: $e');
+      Log.e('Update', 'Update check failed', e);
       _emit(UpdateState(
         status: UpdateStatus.error,
         error: 'Update check failed: $e',
@@ -213,7 +216,7 @@ class UpdateService {
         downloadProgress: 1.0,
       ));
     } catch (e) {
-      debugPrint('[Yap] Download failed: $e');
+      Log.e('Update', 'Download failed', e);
       _emit(_state.copyWith(
         status: UpdateStatus.error,
         error: 'Download failed: $e',
@@ -228,6 +231,7 @@ class UpdateService {
   /// Install the downloaded update and relaunch the app.
   Future<void> installAndRestart() async {
     if (_downloadedPath == null) return;
+    Log.i('Update', 'Installing update');
     _emit(_state.copyWith(status: UpdateStatus.installing));
 
     try {
@@ -237,7 +241,7 @@ class UpdateService {
         await _installWindows(_downloadedPath!);
       }
     } catch (e) {
-      debugPrint('[Yap] Install failed: $e');
+      Log.e('Update', 'Install failed', e);
       _emit(_state.copyWith(
         status: UpdateStatus.error,
         error: 'Install failed: $e',
@@ -258,6 +262,14 @@ class UpdateService {
         error: 'Could not determine app bundle path.',
       ));
       return;
+    }
+
+    // Clean up any leftover mount point from a previous attempt.
+    if (Directory(mountPoint).existsSync()) {
+      await Process.run('hdiutil', ['detach', mountPoint, '-quiet']);
+      try {
+        Directory(mountPoint).deleteSync(recursive: true);
+      } catch (_) {}
     }
 
     // Mount the DMG.
@@ -294,32 +306,64 @@ class UpdateService {
 
     // Write a small updater script.
     // It waits for the current process to exit, swaps the bundle, cleans up,
-    // and relaunches.
+    // and relaunches. Does NOT use set -e so that failures in individual
+    // commands don't silently abort the script (which would leave the app
+    // closed and un-relaunched).
     final scriptPath =
         p.join(Directory.systemTemp.path, 'yap-updater.sh');
     final logPath =
         p.join(Directory.systemTemp.path, 'yap-updater.log');
     final script = '#!/bin/bash\n'
-        'set -e\n'
         'exec > "$logPath" 2>&1\n'
+        'echo "Yap updater started at \$(date)"\n'
+        'echo "Waiting for PID $currentPid to exit..."\n'
         '\n'
-        '# Wait for old process to exit\n'
+        '# Wait for old process to exit (up to 10 seconds)\n'
         'for i in \$(seq 1 50); do\n'
         '  kill -0 $currentPid 2>/dev/null || break\n'
         '  sleep 0.2\n'
         'done\n'
         '\n'
+        '# Extra delay to ensure file handles are fully released\n'
+        'sleep 1\n'
+        '\n'
+        'echo "Replacing app bundle..."\n'
+        '\n'
         '# Replace app bundle using ditto (preserves code signatures & xattrs)\n'
-        'rm -rf "$appBundlePath"\n'
-        'ditto "$newAppPath" "$appBundlePath"\n'
+        'if ! rm -rf "$appBundlePath"; then\n'
+        '  echo "ERROR: Failed to remove old app bundle"\n'
+        '  # Still try to relaunch the existing app\n'
+        '  open "$appBundlePath" 2>/dev/null || true\n'
+        '  hdiutil detach "$mountPoint" -quiet 2>/dev/null || true\n'
+        '  rm -f "$dmgPath"\n'
+        '  rm -f "$scriptPath"\n'
+        '  exit 1\n'
+        'fi\n'
+        '\n'
+        'if ! ditto "$newAppPath" "$appBundlePath"; then\n'
+        '  echo "ERROR: ditto failed to copy new app bundle"\n'
+        '  hdiutil detach "$mountPoint" -quiet 2>/dev/null || true\n'
+        '  rm -f "$dmgPath"\n'
+        '  rm -f "$scriptPath"\n'
+        '  exit 1\n'
+        'fi\n'
+        '\n'
+        'echo "App bundle replaced successfully"\n'
+        '\n'
+        '# Remove quarantine attribute to prevent Gatekeeper issues\n'
+        'xattr -rd com.apple.quarantine "$appBundlePath" 2>/dev/null || true\n'
         '\n'
         '# Unmount DMG and clean up\n'
         'hdiutil detach "$mountPoint" -quiet 2>/dev/null || true\n'
         'rm -f "$dmgPath"\n'
-        'rm -f "$scriptPath"\n'
         '\n'
-        '# Relaunch\n'
-        'open "$appBundlePath"\n';
+        '# Relaunch the updated app\n'
+        'echo "Relaunching..."\n'
+        'open "$appBundlePath"\n'
+        '\n'
+        '# Clean up this script\n'
+        'rm -f "$scriptPath"\n'
+        'echo "Update complete at \$(date)"\n';
     File(scriptPath).writeAsStringSync(script);
 
     // Make executable and launch detached.

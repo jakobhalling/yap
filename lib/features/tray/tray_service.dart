@@ -1,11 +1,11 @@
 import 'dart:io';
 import 'dart:ui';
 
-import 'package:flutter/material.dart';
 import 'package:system_tray/system_tray.dart';
 import 'package:window_manager/window_manager.dart';
 
 import 'package:yap/features/recording/recording_service.dart';
+import 'package:yap/services/log_service.dart';
 import 'package:yap/utils/constants.dart';
 
 /// Manages the system-tray icon and context menu.
@@ -50,6 +50,7 @@ class TrayService {
     );
 
     await _buildMenu();
+    Log.i('Tray', 'System tray initialized');
 
     _tray.registerSystemTrayEventHandler((eventName) {
       if (eventName == kSystemTrayEventClick ||
@@ -124,7 +125,7 @@ class TrayService {
   void _showAbout() {
     // Simple about dialog — in a real app this would use a proper dialog
     // shown from the overlay or main window context.
-    debugPrint('Yap v$appVersion — Voice-driven text input');
+    Log.i('Tray', 'About: Yap v$appVersion');
   }
 
   Future<void> _quit() async {

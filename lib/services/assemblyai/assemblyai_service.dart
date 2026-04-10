@@ -5,6 +5,7 @@ import 'dart:typed_data';
 import 'package:dio/dio.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
 
+import '../log_service.dart';
 import 'assemblyai_config.dart';
 import 'assemblyai_models.dart';
 
@@ -165,6 +166,7 @@ class AssemblyAIServiceImpl implements AssemblyAIService {
     }
 
     _isActive = true;
+    Log.i('AssemblyAI', 'WebSocket connected, session started');
 
     // Listen to incoming messages from AssemblyAI.
     _wsSubscription = _channel!.stream.listen(
@@ -193,6 +195,7 @@ class AssemblyAIServiceImpl implements AssemblyAIService {
 
   @override
   Future<String> endSession() async {
+    Log.i('AssemblyAI', 'Ending session (chunks sent: $_audioChunksSent, messages received: $_messagesReceived)');
     if (!_isActive || _channel == null) {
       return _finalSegments.join(' ').trim();
     }
@@ -289,6 +292,7 @@ class AssemblyAIServiceImpl implements AssemblyAIService {
   }
 
   void _onWsError(Object error) {
+    Log.e('AssemblyAI', 'WebSocket error', error);
     _transcriptController.addError(error);
     _cleanup();
   }

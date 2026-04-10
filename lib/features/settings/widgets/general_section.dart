@@ -348,6 +348,13 @@ class _GeneralSectionState extends ConsumerState<GeneralSection> {
               _buildUpdateAction(),
             ],
           ),
+          Padding(
+            padding: const EdgeInsets.only(left: 26, top: 2),
+            child: Text(
+              'Current version: v$appVersion',
+              style: Theme.of(context).textTheme.bodySmall,
+            ),
+          ),
           if (isDownloading) ...[
             const SizedBox(height: 8),
             LinearProgressIndicator(
@@ -414,7 +421,7 @@ class _GeneralSectionState extends ConsumerState<GeneralSection> {
     switch (_updateState.status) {
       case UpdateStatus.idle:
       case UpdateStatus.upToDate:
-        return 'You are up to date (v$appVersion)';
+        return 'You are up to date';
       case UpdateStatus.checking:
         return 'Checking for updates...';
       case UpdateStatus.updateAvailable:

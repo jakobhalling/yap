@@ -3,6 +3,7 @@ import 'dart:convert';
 
 import 'package:dio/dio.dart';
 
+import '../log_service.dart';
 import 'claude_config.dart';
 import 'claude_models.dart';
 
@@ -37,6 +38,7 @@ class ClaudeServiceImpl implements ClaudeService {
   }) async* {
     final resolvedModel = ClaudeConfig.resolveModel(model);
     final maxTokens = ClaudeConfig.maxTokensForTranscript(transcript);
+    Log.i('Claude', 'Sending request, model: $resolvedModel, transcript: ${transcript.length} chars');
 
     final request = ClaudeRequest(
       model: resolvedModel,
@@ -59,6 +61,7 @@ class ClaudeServiceImpl implements ClaudeService {
         ),
       );
     } on DioException catch (e) {
+      Log.e('Claude', 'API request failed', e);
       throw _mapDioError(e);
     }
 

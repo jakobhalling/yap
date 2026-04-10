@@ -112,6 +112,17 @@ User selects profile (1-4) → ProcessingService
 | `.github/workflows/release.yml` | Windows installer build + GitHub Release |
 | `.github/workflows/auto-tag.yml` | Auto-increments patch version and creates tag on every push to main |
 
+## Log Files
+
+The app writes daily log files via `lib/services/log_service.dart`. To investigate issues, read the most recent log file:
+
+- **macOS:** `~/Library/Logs/Yap/yap-YYYY-MM-DD.log`
+- **Windows:** `%APPDATA%\Yap\logs\yap-YYYY-MM-DD.log`
+
+Logs are tagged by component (`App`, `Overlay`, `Recording`, `Processing`, `Update`, `AssemblyAI`, `Claude`, `Hotkey`, `Paste`, `Tray`, `Startup`) and leveled (`DEBUG`, `INFO`, `WARN`, `ERROR`). Old logs are auto-pruned to 7 files.
+
+The macOS OTA updater script also writes its own log to `$TMPDIR/yap-updater.log` — check this if an in-app update fails to install or relaunch.
+
 ## Agent Specifications
 
 See `agents/` folder for detailed specifications:

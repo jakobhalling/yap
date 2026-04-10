@@ -3,9 +3,13 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:window_manager/window_manager.dart';
 
 import 'app.dart';
+import 'services/log_service.dart';
+import 'utils/constants.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  await Log.init();
+  Log.i('App', 'Starting Yap v$appVersion');
 
   // Initialize window manager for tray-only frameless app.
   await windowManager.ensureInitialized();

@@ -13,6 +13,7 @@ import 'features/recording/recording_providers.dart';
 import 'features/settings/settings_providers.dart';
 import 'features/settings/settings_screen.dart';
 import 'features/setup/setup_screen.dart';
+import 'services/log_service.dart';
 import 'services/providers.dart';
 import 'shared/theme/app_theme.dart';
 import 'utils/constants.dart';
@@ -47,6 +48,7 @@ class _AppState extends ConsumerState<App> {
     final setupDone = await settings.isSetupComplete();
 
     if (!setupDone) {
+      Log.i('App', 'First boot — showing setup wizard');
       // Show setup wizard in a visible, centered window
       await windowManager.setSize(const Size(580, 520));
       await windowManager.center();
@@ -63,6 +65,7 @@ class _AppState extends ConsumerState<App> {
   }
 
   Future<void> _enterTrayMode() async {
+    Log.i('App', 'Entering tray mode');
     // Hide the window — app lives in the tray
     await windowManager.hide();
     await windowManager.setSkipTaskbar(true);
@@ -72,6 +75,7 @@ class _AppState extends ConsumerState<App> {
   }
 
   Future<void> _initServices() async {
+    Log.i('App', 'Initializing services');
     final hotkeyService = ref.read(hotkeyServiceProvider);
     final pasteService = ref.read(pasteServiceProvider);
     final audioService = ref.read(audioServiceProvider);
@@ -111,6 +115,7 @@ class _AppState extends ConsumerState<App> {
     });
 
     // Check for updates in background after startup.
+    Log.i('App', 'Services initialized, checking for updates');
     final updateService = ref.read(updateServiceProvider);
     updateService.checkForUpdate(appVersion);
   }
@@ -125,18 +130,16 @@ class _AppState extends ConsumerState<App> {
     for (var attempt = 0; attempt < 3; attempt++) {
       try {
         await hotkeyService.start(triggerKey: triggerKey);
+        Log.i('Hotkey', 'Monitoring started (trigger: ${triggerKey ?? "default"})');
         return; // success
       } catch (e) {
-        debugPrint('[Yap] Hotkey start attempt ${attempt + 1} failed: $e');
+        Log.w('Hotkey', 'Start attempt ${attempt + 1} failed: $e');
         if (attempt < 2) {
           await Future.delayed(const Duration(seconds: 2));
         }
       }
     }
-    debugPrint(
-      '[Yap] Hotkey start failed after retries. '
-      'Check Accessibility permission in System Settings.',
-    );
+    Log.e('Hotkey', 'Start failed after retries — check Accessibility permission');
   }
 
   /// Open settings or history in the main window (temporarily visible).

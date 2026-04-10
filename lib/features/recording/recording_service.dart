@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:yap/services/assemblyai/assemblyai_service.dart';
 import 'package:yap/services/audio/audio_service.dart';
+import 'package:yap/services/log_service.dart';
 
 import 'recording_state.dart';
 
@@ -127,6 +128,7 @@ class RecordingServiceImpl implements RecordingService {
     _finalSegments.clear();
     _latestPartial = '';
 
+    Log.i('Recording', 'Starting recording session');
     final now = DateTime.now();
     _emit(RecordingState(
       status: RecordingStatus.recording,
@@ -138,6 +140,7 @@ class RecordingServiceImpl implements RecordingService {
       final deviceId = await getDeviceId?.call();
       await audioService.startCapture(deviceId: deviceId);
     } catch (e) {
+      Log.e('Recording', 'Failed to start audio capture', e);
       _emit(RecordingState(
         status: RecordingStatus.error,
         errorMessage: 'Failed to start audio capture: $e',
@@ -154,6 +157,7 @@ class RecordingServiceImpl implements RecordingService {
     } catch (e) {
       // Clean up audio since transcription failed to start.
       await audioService.stopCapture();
+      Log.e('Recording', 'Failed to connect to AssemblyAI', e);
       _emit(RecordingState(
         status: RecordingStatus.error,
         errorMessage: 'Failed to connect to AssemblyAI: $e',
@@ -218,6 +222,7 @@ class RecordingServiceImpl implements RecordingService {
     await _transcriptSub?.cancel();
     _transcriptSub = null;
 
+    Log.i('Recording', 'Recording complete, transcript: ${finalText.length} chars');
     _emit(RecordingState(
       status: RecordingStatus.complete,
       currentTranscript: finalText,
@@ -280,6 +285,7 @@ class RecordingServiceImpl implements RecordingService {
   }
 
   void _onTranscriptError(Object error) {
+    Log.e('Recording', 'Transcript stream error', error);
     // Preserve whatever transcript we already have.
     _elapsedTimer?.cancel();
     _maxDurationTimer?.cancel();
