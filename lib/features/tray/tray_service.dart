@@ -26,20 +26,27 @@ class TrayService {
   Brightness _currentBrightness = PlatformDispatcher.instance.platformBrightness;
 
   /// Returns the icon path for the current platform, recording state, and theme.
+  ///
+  /// On macOS, uses the light (black) variant as a template image —
+  /// macOS automatically tints it white in dark mode and black in light mode.
+  /// On Windows, manually selects dark/light variant based on system theme.
   String _iconPath({required bool recording}) {
+    final state = recording ? 'tray_icon_recording' : 'tray_icon';
+    if (Platform.isMacOS) {
+      return 'assets/icons/${state}_light.png';
+    }
     final isDark = _currentBrightness == Brightness.dark;
     final variant = isDark ? 'dark' : 'light';
-    final state = recording ? 'tray_icon_recording' : 'tray_icon';
-    final ext = Platform.isWindows ? 'ico' : 'png';
-    return 'assets/icons/${state}_$variant.$ext';
+    return 'assets/icons/${state}_$variant.ico';
   }
 
   /// Initialize the tray icon and context menu. Call once at app startup.
   Future<void> init() async {
     await _tray.initSystemTray(
-      title: 'Yap',
+      title: Platform.isMacOS ? '' : 'Yap',
       iconPath: _iconPath(recording: false),
       toolTip: 'Yap — voice to text',
+      isTemplate: Platform.isMacOS,
     );
 
     await _buildMenu();
@@ -107,7 +114,10 @@ class TrayService {
   /// Update the tray icon based on current recording state and system theme.
   Future<void> _updateIcon() async {
     try {
-      await _tray.setImage(_iconPath(recording: _isRecording));
+      await _tray.setImage(
+        _iconPath(recording: _isRecording),
+        isTemplate: Platform.isMacOS,
+      );
     } catch (_) {}
   }
 

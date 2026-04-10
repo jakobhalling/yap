@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:screen_retriever/screen_retriever.dart';
@@ -37,6 +38,13 @@ class OverlayWindow {
     await windowManager.setOpacity(1.0);
     await windowManager.setPosition(Offset(left, top));
     await windowManager.setSize(Size(_overlayWidth, _currentHeight));
+
+    // On macOS, ensure the overlay appears on all workspaces/spaces
+    // and above fullscreen apps.
+    if (Platform.isMacOS) {
+      await windowManager.setVisibleOnAllWorkspaces(true,
+          visibleOnFullScreen: true);
+    }
 
     // Show first, then force always-on-top and focus.
     // On macOS, tray-only apps need show → alwaysOnTop → focus in this order
