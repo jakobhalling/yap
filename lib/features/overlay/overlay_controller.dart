@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 
 import 'package:yap/features/overlay/overlay_window.dart';
@@ -106,6 +107,8 @@ class OverlayController {
   final PromptProfileDao? profileDao;
   final AudioService audioService;
 
+  static const _soundChannel = MethodChannel('com.yap.sound');
+
   OverlayController({
     required this.recordingService,
     required this.processingService,
@@ -150,6 +153,14 @@ class OverlayController {
   void _emit(YapOverlayState s) {
     _state = s;
     _stateController.add(s);
+  }
+
+  Future<void> _playSound(String method) async {
+    try {
+      await _soundChannel.invokeMethod(method);
+    } catch (e) {
+      debugPrint('[Yap] Sound playback failed: $e');
+    }
   }
 
   Future<List<ProfileOption>> _loadProfiles() async {
@@ -245,6 +256,12 @@ class OverlayController {
       });
 
       await recordingService.startRecording();
+
+      // Play the start sound AFTER audio capture is established.
+      // Playing before capture can cause PlaySoundW (waveOut) to interfere
+      // with WASAPI initialization on Windows.
+      _playSound('playStartSound');
+
       _startElapsedTimer();
     } catch (e) {
       Log.e('Overlay', 'Failed to start recording', e);
@@ -261,6 +278,7 @@ class OverlayController {
       _stopElapsedTimer();
       _levelSub?.cancel();
       _levelSub = null;
+      _playSound('playStopSound');
       await recordingService.stopRecording();
       _recordingSub?.cancel();
 

@@ -308,6 +308,10 @@ static float SampleToFloat(const BYTE* data, int bits_per_sample,
 }
 
 void AudioCaptureChannel::CaptureThreadProc() {
+  // COM must be initialized on every thread that uses COM interfaces.
+  // WASAPI capture client methods are COM calls that require this.
+  CoInitializeEx(nullptr, COINIT_MULTITHREADED);
+
   const double ratio =
       static_cast<double>(kTargetSampleRate) / source_sample_rate_;
   const int bytes_per_source_sample = source_bits_per_sample_ / 8;
@@ -392,4 +396,6 @@ void AudioCaptureChannel::CaptureThreadProc() {
       level_counter = 0;
     }
   }
+
+  CoUninitialize();
 }

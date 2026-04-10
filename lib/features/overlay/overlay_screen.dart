@@ -42,9 +42,7 @@ class OverlayScreen extends ConsumerStatefulWidget {
 class _OverlayScreenState extends ConsumerState<OverlayScreen> {
   late final FocusNode _focusNode;
   late final StreamSubscription<YapOverlayState> _sub;
-  static const _soundChannel = MethodChannel('com.yap.sound');
   YapOverlayState _state = const YapOverlayState();
-  OverlayPhase? _previousPhase;
 
   OverlayController get _ctrl => widget.controller;
 
@@ -57,23 +55,10 @@ class _OverlayScreenState extends ConsumerState<OverlayScreen> {
   }
 
   void _onStateChange(YapOverlayState s) {
-    final prev = _previousPhase;
-    _previousPhase = s.phase;
-    if (prev == OverlayPhase.hidden && s.phase == OverlayPhase.recording) {
-      _playSound('playStartSound');
-    } else if (prev == OverlayPhase.recording && s.phase != OverlayPhase.recording) {
-      _playSound('playStopSound');
-    }
     if (mounted) {
       setState(() => _state = s);
       if (s.phase != OverlayPhase.hidden) _focusNode.requestFocus();
     }
-  }
-
-  Future<void> _playSound(String method) async {
-    try {
-      await _soundChannel.invokeMethod(method);
-    } catch (_) {}
   }
 
   @override
