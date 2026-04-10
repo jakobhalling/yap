@@ -1,9 +1,30 @@
+import 'dart:async';
+import 'dart:collection';
 import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 import 'package:path/path.dart' as p;
 
-/// Lightweight file-based logger for Yap.
+// ---------------------------------------------------------------------------
+// In-memory log event (for live viewer)
+// ---------------------------------------------------------------------------
+
+class LogEvent {
+  final DateTime timestamp;
+  final String level;
+  final String tag;
+  final String message;
+
+  const LogEvent({
+    required this.timestamp,
+    required this.level,
+    required this.tag,
+    required this.message,
+  });
+}
+
+/// Lightweight file-based logger for Yap with an in-memory buffer for live
+/// viewing in the Settings > Log tab.
 ///
 /// Call [Log.init] once at app startup. Then use the static methods
 /// [d], [i], [w], [e] to log at debug, info, warn, and error levels.
@@ -16,6 +37,25 @@ class Log {
 
   static IOSink? _sink;
   static bool _initialized = false;
+
+  // ---- In-memory buffer for live viewer -----------------------------------
+
+  static const int _maxEvents = 500;
+  static final _events = ListQueue<LogEvent>();
+  static final _controller = StreamController<LogEvent>.broadcast();
+
+  /// All buffered events, newest first.
+  static List<LogEvent> get events => _events.toList();
+
+  /// Stream that emits each new event as it arrives.
+  static Stream<LogEvent> get stream => _controller.stream;
+
+  /// Clear the in-memory event buffer.
+  static void clearEvents() {
+    _events.clear();
+  }
+
+  // ---- File-based logging -------------------------------------------------
 
   /// Initialize the logger. Safe to call multiple times.
   static Future<void> init() async {
@@ -37,10 +77,10 @@ class Log {
   static void d(String tag, String msg) => _write('DEBUG', tag, msg);
 
   /// Info-level: key lifecycle events, state transitions.
-  static void i(String tag, String msg) => _write('INFO ', tag, msg);
+  static void i(String tag, String msg) => _write('INFO', tag, msg);
 
   /// Warn-level: recoverable issues, unexpected-but-handled situations.
-  static void w(String tag, String msg) => _write('WARN ', tag, msg);
+  static void w(String tag, String msg) => _write('WARN', tag, msg);
 
   /// Error-level: failures that affect functionality.
   static void e(String tag, String msg, [Object? err]) {
@@ -50,10 +90,18 @@ class Log {
   }
 
   static void _write(String level, String tag, String msg) {
-    final now = DateTime.now().toIso8601String();
-    final line = '$now [$level] [$tag] $msg';
+    final now = DateTime.now();
+    final line = '${now.toIso8601String()} [$level] [$tag] $msg';
     debugPrint('[Yap] $line');
     _sink?.writeln(line);
+
+    // Buffer for live viewer.
+    final event = LogEvent(timestamp: now, level: level, tag: tag, message: msg);
+    _events.addFirst(event);
+    if (_events.length > _maxEvents) {
+      _events.removeLast();
+    }
+    _controller.add(event);
   }
 
   /// Flush and close the log file.

@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:yap/features/settings/widgets/api_keys_section.dart';
 import 'package:yap/features/settings/widgets/general_section.dart';
 import 'package:yap/features/settings/widgets/history_section.dart';
+import 'package:yap/features/settings/widgets/log_section.dart';
 import 'package:yap/features/settings/widgets/profiles_section.dart';
 
 /// Full settings screen with tabbed sections.
@@ -20,7 +21,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen>
     with SingleTickerProviderStateMixin {
   late final TabController _tabController;
 
-  static const _tabs = ['General', 'API Keys', 'Profiles', 'History'];
+  static const _tabs = ['General', 'API Keys', 'Profiles', 'History', 'Log'];
 
   @override
   void initState() {
@@ -50,6 +51,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen>
               ApiKeysSection(),
               ProfilesSection(),
               HistorySection(),
+              LogSection(),
             ],
           ),
         ),
