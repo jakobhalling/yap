@@ -445,6 +445,7 @@ class OverlayController {
   // ---- cancel / reset ------------------------------------------------------
 
   void cancel() {
+    if (_state.phase == OverlayPhase.hidden) return;
     Log.i('Overlay', 'Cancelled from phase: ${_state.phase.name}');
     if (_state.phase == OverlayPhase.recording) {
       recordingService.cancelRecording();

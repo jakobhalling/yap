@@ -237,12 +237,40 @@ class AudioCaptureChannel: NSObject, FlutterStreamHandler {
 
         // Set the requested input device before starting the engine.
         if let deviceId = deviceId, !deviceId.isEmpty {
+            NSLog("[Yap/Audio] Using explicitly selected device: \(deviceId)")
             setInputDevice(deviceId)
+        } else {
+            NSLog("[Yap/Audio] Using system default input device")
         }
 
         let engine = AVAudioEngine()
         let inputNode = engine.inputNode
         let inputFormat = inputNode.outputFormat(forBus: 0)
+
+        // Log the actual device and format being used for diagnosis.
+        NSLog("[Yap/Audio] Input format: sampleRate=\(inputFormat.sampleRate), channels=\(inputFormat.channelCount), bitsPerChannel=\(inputFormat.streamDescription.pointee.mBitsPerChannel)")
+
+        // Log which device the engine is actually using.
+        do {
+            var deviceID = AudioDeviceID(0)
+            var propSize = UInt32(MemoryLayout<AudioDeviceID>.size)
+            var addr = AudioObjectPropertyAddress(
+                mSelector: kAudioHardwarePropertyDefaultInputDevice,
+                mScope: kAudioObjectPropertyScopeGlobal,
+                mElement: kAudioObjectPropertyElementMain
+            )
+            AudioObjectGetPropertyData(AudioObjectID(kAudioObjectSystemObject), &addr, 0, nil, &propSize, &deviceID)
+
+            var nameAddr = AudioObjectPropertyAddress(
+                mSelector: kAudioDevicePropertyDeviceNameCFString,
+                mScope: kAudioObjectPropertyScopeGlobal,
+                mElement: kAudioObjectPropertyElementMain
+            )
+            var name: CFString = "" as CFString
+            var nameSize = UInt32(MemoryLayout<CFString>.size)
+            AudioObjectGetPropertyData(deviceID, &nameAddr, 0, nil, &nameSize, &name)
+            NSLog("[Yap/Audio] Default input device: \(name as String) (id: \(deviceID))")
+        }
 
         guard let targetFormat = AVAudioFormat(
             commonFormat: .pcmFormatInt16,
